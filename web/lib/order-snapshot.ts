@@ -8,8 +8,18 @@ export interface SnapshotContact {
   phone: string | null;
 }
 
+export interface SnapshotLine {
+  screen_name: string | null;
+  starts: string | null;
+  ends: string | null;
+  days: number | null;
+  slots: number;
+  exclusive: boolean;
+  total_minor: number;
+}
+
 export interface OrderSnapshot {
-  v: 1;
+  v: 2;
   signed_at: string;
   currency: string;
   payment_terms_days: number | null;
@@ -34,6 +44,8 @@ export interface OrderSnapshot {
     payment: SnapshotContact | null;
     manager: SnapshotContact | null;
   };
+  /** Unidad y cantidad contratadas por línea (issue #13). Vacío en firmas legacy. */
+  lines: SnapshotLine[];
 }
 
 export interface SnapshotSourceContact {
@@ -73,14 +85,37 @@ export function buildOrderSnapshot(input: {
   signer_contact?: SnapshotSourceContact | null;
   payment_contact?: SnapshotSourceContact | null;
   manager_contact?: SnapshotSourceContact | null;
+  lines?: Array<{
+    screen_name?: string | null;
+    starts?: string | null;
+    ends?: string | null;
+    days?: number | null;
+    slots?: number | null;
+    exclusive?: boolean | null;
+    total_minor?: number | null;
+  }> | null;
 }): OrderSnapshot {
   const gross = Number.isFinite(input.gross_minor) && input.gross_minor >= 0 ? Math.round(input.gross_minor) : 0;
   const hasAgency =
     input.agency_name !== null ||
     input.agency_tax_id !== null ||
     input.agency_commission_pct !== null;
+  const snapLines = (input.lines ?? []).map((l) => {
+    const slots = Number(l.slots);
+    const total = Number(l.total_minor);
+    const days = Number(l.days);
+    return {
+      screen_name: typeof l.screen_name === "string" && l.screen_name.trim() ? l.screen_name.trim() : null,
+      starts: typeof l.starts === "string" && l.starts ? l.starts : null,
+      ends: typeof l.ends === "string" && l.ends ? l.ends : null,
+      days: Number.isSafeInteger(days) && days > 0 ? days : null,
+      slots: Number.isSafeInteger(slots) && slots >= 1 && slots <= 100 ? slots : 1,
+      exclusive: l.exclusive === true,
+      total_minor: Number.isFinite(total) && total >= 0 ? Math.round(total) : 0,
+    };
+  });
   return {
-    v: 1,
+    v: 2,
     signed_at: input.signed_at,
     currency: input.currency,
     payment_terms_days: input.payment_terms_days,
@@ -107,6 +142,7 @@ export function buildOrderSnapshot(input: {
       payment: snapContact(input.payment_contact),
       manager: snapContact(input.manager_contact),
     },
+    lines: snapLines,
   };
 }
 
@@ -133,9 +169,10 @@ function parseSnapContact(v: unknown): SnapshotContact | null {
   return { name, role: optStr(v, "role"), email: optStr(v, "email"), phone: optStr(v, "phone") };
 }
 
-/** Parse defensivo para el PDF: null ante cualquier forma inválida. */
+/** Parse defensivo para el PDF: null ante cualquier forma inválida.
+ *  Acepta v1 (legacy, sin líneas) y v2 (con líneas, issue #13). */
 export function parseOrderSnapshot(v: unknown): OrderSnapshot | null {
-  if (!isRecord(v) || v.v !== 1) return null;
+  if (!isRecord(v) || (v.v !== 1 && v.v !== 2)) return null;
   const billing = isRecord(v.billing) ? v.billing : null;
   const advertiser = isRecord(v.advertiser) ? v.advertiser : null;
   const agencyRaw = v.agency;
@@ -154,8 +191,24 @@ export function parseOrderSnapshot(v: unknown): OrderSnapshot | null {
   if (!contacts) return null;
   const signedAt = typeof v.signed_at === "string" && v.signed_at ? v.signed_at : null;
   if (!signedAt) return null;
+  const rawLines = Array.isArray(v.lines) ? v.lines : [];
+  const lines: SnapshotLine[] = rawLines.map((l) => {
+    const r = isRecord(l) ? l : {};
+    const slots = Number(r.slots);
+    const total = Number(r.total_minor);
+    const days = Number(r.days);
+    return {
+      screen_name: optStr(r, "screen_name"),
+      starts: optStr(r, "starts"),
+      ends: optStr(r, "ends"),
+      days: Number.isSafeInteger(days) && days > 0 ? days : null,
+      slots: Number.isSafeInteger(slots) && slots >= 1 && slots <= 100 ? slots : 1,
+      exclusive: r.exclusive === true,
+      total_minor: Number.isFinite(total) && total >= 0 ? Math.round(total) : 0,
+    };
+  });
   return {
-    v: 1,
+    v: 2,
     signed_at: signedAt,
     currency: typeof v.currency === "string" && v.currency ? v.currency : "PEN",
     payment_terms_days: optNum(v, "payment_terms_days"),
@@ -179,5 +232,6 @@ export function parseOrderSnapshot(v: unknown): OrderSnapshot | null {
       payment: parseSnapContact(contacts.payment),
       manager: parseSnapContact(contacts.manager),
     },
+    lines,
   };
 }

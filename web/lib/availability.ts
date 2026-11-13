@@ -47,6 +47,21 @@ export function isHoldFresh(createdAt: string | null | undefined, now = Date.now
   return t + HOLD_DAYS * DAY_MS > now;
 }
 
+/** Regla pura de bloqueo día-pantalla (issue #13, testeable sin BD).
+ *  `hasExclusive`: hay venta exclusiva vigente ese día.
+ *  `reqExclusive`: la línea pedida es exclusiva (requiere día vacío). */
+export function dayBlocked(opts: {
+  reserved: number;
+  capacity: number;
+  hasExclusive: boolean;
+  reqSlots: number;
+  reqExclusive: boolean;
+}): boolean {
+  if (opts.hasExclusive) return true;
+  if (opts.reqExclusive) return opts.reserved > 0;
+  return opts.capacity - opts.reserved < opts.reqSlots;
+}
+
 /** Fecha UI "yyyy-mm-dd" válida o throw (fail-closed: nunca {} libre). */
 function assertDateStr(v: string, field: string): string {
   if (!isValidISODate(v)) {
@@ -69,13 +84,14 @@ export function periodBounds(starts: string, ends: string): { qStart: string; qE
 /** Pantallas ocupadas en [starts, ends] (fechas UI inclusivas).
  *  Slot-aware: solo bloquean los días donde reservados + solicitados >
  *  capacidad. `slots`: cantidad pedida (una para todas o por pantalla,
- *  default 1). `excludeIoId`: ignora líneas y bookings de esa orden (editar
+ *  default 1). `exclusive`: venta exclusiva pedida (requiere día vacío).
+ *  `excludeIoId`: ignora líneas y bookings de esa orden (editar
  *  sin chocar consigo misma). */
 export async function getScreenConflicts(
   storeId: string,
   starts: string,
   ends: string,
-  opts: { excludeIoId?: string | null; slots?: number | Record<string, number> } = {},
+  opts: { excludeIoId?: string | null; slots?: number | Record<string, number>; exclusive?: boolean | Record<string, boolean> } = {},
 ): Promise<ScreenConflict[]> {
   return (await getPeriodAvailability(storeId, null, starts, ends, opts)).conflicts;
 }
@@ -128,6 +144,8 @@ interface AvailabilityGrid {
   info: Map<string, { io_number: string | null; brand: string | null; source: "order" | "booking" }>;
   /** Días con al menos un hold/borrador vigente (punto indicador). */
   holds: Map<string, Set<number>>;
+  /** Días con venta exclusiva vigente (bloquean todo, issue #13). */
+  exclusive: Map<string, Set<number>>;
 }
 
 /** Grilla reservados/día por pantalla en [fromNum, toNumExcl) (ordinales).
@@ -146,6 +164,7 @@ async function loadAvailabilityGrid(
   const reserved = new Map<string, Map<number, number>>();
   const info = new Map<string, { io_number: string | null; brand: string | null; source: "order" | "booking" }>();
   const holds = new Map<string, Set<number>>();
+  const exclusive = new Map<string, Set<number>>();
   const add = (id: string, day: number, qty: number) => {
     if (day < fromNum || day >= toNumExcl || qty <= 0) return;
     let m = reserved.get(id);
@@ -183,7 +202,7 @@ async function loadAvailabilityGrid(
     const lines = await fetchPaged("lines", (a, b) => {
       let linesQuery = db
         .from("io_lines")
-        .select("io_id,screen_id,starts_at,ends_at,cant_slots,io_orders!insertion_order_lines_io_id_fkey!inner(io_number,brand,status,created_at)")
+        .select("io_id,screen_id,starts_at,ends_at,cant_slots,is_exclusive,io_orders!insertion_order_lines_io_id_fkey!inner(io_number,brand,status,created_at)")
         .eq("store_id", storeId)
         .eq("io_orders.store_id", storeId)
         .lt("starts_at", winEnd)
@@ -205,12 +224,18 @@ async function loadAvailabilityGrid(
       const s = Math.max(isoDayToNum(isoDayPart(String(l.starts_at)) ?? ""), fromNum);
       const e = Math.min(isoDayToNum(isoDayPart(String(l.ends_at)) ?? ""), toNumExcl);
       const isHold = o.status === "draft";
+      const isExcl = l.is_exclusive === true;
       for (let d = s; d < e; d++) {
         add(id, d, qty);
         if (isHold) {
           let h = holds.get(id);
           if (!h) holds.set(id, (h = new Set()));
           h.add(d);
+        }
+        if (isExcl) {
+          let x = exclusive.get(id);
+          if (!x) exclusive.set(id, (x = new Set()));
+          x.add(d);
         }
       }
       note(
@@ -269,9 +294,9 @@ async function loadAvailabilityGrid(
     }
   }
 
-  const ids = screenIds ?? [...new Set([...reserved.keys()])];
+  const ids = screenIds ?? [...new Set([...reserved.keys(), ...exclusive.keys()])];
   const capacities = await getScreenCapacities(storeId, ids);
-  return { ids, capacities, reserved, info, holds };
+  return { ids, capacities, reserved, info, holds, exclusive };
 }
 
 /** Días consecutivos → rangos inclusivos (para calendarios). */
@@ -316,7 +341,7 @@ export async function getPeriodAvailability(
   screenIds: string[] | null,
   starts: string,
   ends: string,
-  opts: { excludeIoId?: string | null; slots?: number | Record<string, number> } = {},
+  opts: { excludeIoId?: string | null; slots?: number | Record<string, number>; exclusive?: boolean | Record<string, boolean> } = {},
 ): Promise<PeriodAvailability> {
   const startNum = isoDayToNum(assertDateStr(starts, "starts"));
   const endNum = isoDayToNum(assertDateStr(ends, "ends"));
@@ -331,10 +356,15 @@ export async function getPeriodAvailability(
     const raw = typeof opts.slots === "number" ? opts.slots : opts.slots?.[id];
     return normalizeLineSlots(raw) ?? 1;
   };
+  const wantedExcl = (id: string): boolean => {
+    if (typeof opts.exclusive === "boolean") return opts.exclusive;
+    return opts.exclusive?.[id] === true;
+  };
   for (const id of grid.ids) {
     const capacity = grid.capacities.get(id) ?? DEFAULT_SLOTS_PER_SCREEN;
     capacities[id] = capacity;
     const q = wanted(id);
+    const qExcl = wantedExcl(id);
     const days: Record<string, number> = {};
     const sold: Record<string, number> = {};
     const blocked: string[] = [];
@@ -346,7 +376,8 @@ export async function getPeriodAvailability(
       const free = Math.max(0, capacity - raw);
       days[day] = free;
       if (free < minFree) minFree = free;
-      if (free < q) blocked.push(day);
+      const hasExcl = grid.exclusive.get(id)?.has(d) === true;
+      if (dayBlocked({ reserved: raw, capacity, hasExclusive: hasExcl, reqSlots: q, reqExclusive: qExcl })) blocked.push(day);
     }
     remaining[id] = days;
     taken[id] = sold;
@@ -383,6 +414,8 @@ export interface LineRequest {
   starts: string;
   ends: string;
   slots: number;
+  /** Venta exclusiva: requiere día vacío y bloquea el resto (issue #13). */
+  exclusive?: boolean;
 }
 
 /** Evalúa cupo por línea (su periodo × su `q`): fail-closed ante forma
@@ -398,10 +431,14 @@ export async function findLineConflicts(
     const starts = String(l.starts ?? "").trim();
     const ends = String(l.ends ?? "").trim();
     const q = normalizeLineSlots(l.slots);
+    const exclusive = l.exclusive === true;
     if (!screen_id || !isValidISODate(starts) || !isValidISODate(ends) || ends < starts || q === null) {
       throw new Error(`Línea ${i + 1}: periodo o slots inválidos.`);
     }
-    return { screen_id, starts, ends, q };
+    if (exclusive && q !== 1) {
+      throw new Error(`Línea ${i + 1}: la exclusiva usa 1 slot (ocupa toda la pantalla).`);
+    }
+    return { screen_id, starts, ends, q, exclusive };
   });
   if (clean.length === 0) return null;
   const from = clean.reduce((a, l) => (a < l.starts ? a : l.starts), clean[0].starts);
@@ -413,8 +450,9 @@ export async function findLineConflicts(
     const capacity = grid.capacities.get(l.screen_id) ?? DEFAULT_SLOTS_PER_SCREEN;
     const blocked: string[] = [];
     for (let d = isoDayToNum(l.starts); d <= isoDayToNum(l.ends); d++) {
-      const free = capacity - (grid.reserved.get(l.screen_id)?.get(d) ?? 0);
-      if (free < l.q) blocked.push(dayNumToISO(d));
+      const raw = grid.reserved.get(l.screen_id)?.get(d) ?? 0;
+      const hasExcl = grid.exclusive.get(l.screen_id)?.has(d) === true;
+      if (dayBlocked({ reserved: raw, capacity, hasExclusive: hasExcl, reqSlots: l.q, reqExclusive: l.exclusive })) blocked.push(dayNumToISO(d));
     }
     if (blocked.length > 0) {
       const hit = grid.info.get(l.screen_id);
@@ -447,7 +485,7 @@ export async function getScreenOccupancy(
   storeId: string,
   screenIds: string[],
   from: string,
-  opts: { excludeIoId?: string | null; slots?: number | Record<string, number> } = {},
+  opts: { excludeIoId?: string | null; slots?: number | Record<string, number>; exclusive?: boolean | Record<string, boolean> } = {},
 ): Promise<Record<string, OccupiedRange[]>> {
   assertDateStr(from, "from");
   const out: Record<string, OccupiedRange[]> = {};
@@ -458,13 +496,19 @@ export async function getScreenOccupancy(
     const raw = typeof opts.slots === "number" ? opts.slots : opts.slots?.[id];
     return normalizeLineSlots(raw) ?? 1;
   };
+  const wantedExcl = (id: string): boolean => {
+    if (typeof opts.exclusive === "boolean") return opts.exclusive;
+    return opts.exclusive?.[id] === true;
+  };
   for (const id of grid.ids) {
     const capacity = grid.capacities.get(id) ?? DEFAULT_SLOTS_PER_SCREEN;
     const q = wanted(id);
+    const qExcl = wantedExcl(id);
     const full: number[] = [];
     for (let d = fromNum; d < fromNum + 400; d++) {
-      const free = capacity - (grid.reserved.get(id)?.get(d) ?? 0);
-      if (free < q) full.push(d);
+      const raw = grid.reserved.get(id)?.get(d) ?? 0;
+      const hasExcl = grid.exclusive.get(id)?.has(d) === true;
+      if (dayBlocked({ reserved: raw, capacity, hasExclusive: hasExcl, reqSlots: q, reqExclusive: qExcl })) full.push(d);
     }
     out[id] = mergeDayNums(full);
   }

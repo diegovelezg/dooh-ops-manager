@@ -50,7 +50,7 @@ export function OrderLinesForm({
   // Meta de las líneas actuales (para pantallas fuera del top 200/inactivas
   // y para preservar notas): nombre/detalle/notas + total original + slots.
   const initialMeta = useMemo(() => {
-    const m = new Map<string, { name: string | null; detail: string | null; notes: string | null; starts: string; ends: string; totalMajor: number | null; slots: number }>();
+    const m = new Map<string, { name: string | null; detail: string | null; notes: string | null; starts: string; ends: string; totalMajor: number | null; slots: number; exclusive: boolean }>();
     for (const l of initialLines) {
       const sid = typeof l.screen_id === "string" ? l.screen_id : "";
       if (!sid || m.has(sid)) continue;
@@ -68,6 +68,7 @@ export function OrderLinesForm({
         ends,
         totalMajor,
         slots: Number.isSafeInteger(rawSlots) && rawSlots >= 1 && rawSlots <= 100 ? rawSlots : 1,
+        exclusive: l.is_exclusive === true,
       });
     }
     return m;
@@ -123,6 +124,11 @@ export function OrderLinesForm({
       initialSelected.map((id) => [id, String(initialMeta.get(id)?.slots ?? 1)]),
     ),
   );
+  const [exclusive, setExclusive] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(
+      initialSelected.map((id) => [id, initialMeta.get(id)?.exclusive === true]),
+    ),
+  );
   const [notesById] = useState<Record<string, string | null>>(() =>
     Object.fromEntries([...initialMeta.entries()].map(([id, m]) => [id, m.notes])),
   );
@@ -146,7 +152,7 @@ export function OrderLinesForm({
     commonWindowFor,
     nextWindowLabelFor,
     ensureOccupancy,
-  } = useScreenAvailability({ screens, starts, ends, slots, excludeIoId: orderId });
+  } = useScreenAvailability({ screens, starts, ends, slots, exclusive, excludeIoId: orderId });
 
   // Precarga el precio de la BD (price_pen) y 1 slot al elegir pantallas,
   // sin pisar lo que el vendedor ya digitó o lo que viene de las líneas actuales.
@@ -189,9 +195,10 @@ export function OrderLinesForm({
     const n = Number(String(prices[id] ?? "").replace(",", "."));
     return Number.isFinite(n) && n > 0 ? n : null;
   };
-  const slotsOf = (id: string) => parseSlotsInput(slots[id]);
+  const slotsOf = (id: string) => (exclusive[id] === true ? 1 : parseSlotsInput(slots[id]));
   const invalidRows = rows.filter((r) => priceOf(r.id) === null);
   const invalidSlotsRows = rows.filter((r) => slotsOf(r.id) === null);
+  const invalidExclRows = rows.filter((r) => exclusive[r.id] === true && parseSlotsInput(slots[r.id]) !== 1);
   const blockedRows = rows.filter((r) => occupiedOf(r.id).length > 0);
   const commonWindow = commonWindowFor(selected);
   const nextWindowLabel = nextWindowLabelFor(selected);
@@ -223,11 +230,12 @@ export function OrderLinesForm({
   if (rows.length === 0) missing.push("al menos una pantalla");
   else if (invalidRows.length > 0) missing.push(`precio de ${invalidRows.length} pantalla${plural(invalidRows.length)}`);
   else if (invalidSlotsRows.length > 0) missing.push(`slots de ${invalidSlotsRows.length} pantalla${plural(invalidSlotsRows.length)} (1–100)`);
+  else if (invalidExclRows.length > 0) missing.push(`exclusiva con slots ≠ 1 (${invalidExclRows.length})`);
   if (blockedRows.length > 0) missing.push(`${blockedRows.length} pantalla${plural(blockedRows.length)} sin cupo en ese periodo`);
   const canSubmit = !pending && !checking && missing.length === 0;
 
   function save() {
-    if (dias === null || rows.length === 0 || invalidRows.length > 0 || invalidSlotsRows.length > 0 || blockedRows.length > 0) {
+    if (dias === null || rows.length === 0 || invalidRows.length > 0 || invalidSlotsRows.length > 0 || invalidExclRows.length > 0 || blockedRows.length > 0) {
       toastFormError("Revisa las pantallas", `Falta: ${missing.join(", ")}.`);
       return;
     }
@@ -240,6 +248,7 @@ export function OrderLinesForm({
           ends,
           total: String((priceOf(r.id) as number) * (dias as number) * (slotsOf(r.id) as number)),
           slots: slotsOf(r.id) as number,
+          exclusive: exclusive[r.id] === true,
           notes: notesById[r.id] ?? null,
         })),
       });
@@ -336,6 +345,7 @@ export function OrderLinesForm({
                 rows={rows}
                 prices={prices}
                 slots={slots}
+                exclusive={exclusive}
                 dias={dias}
                 currency={orderCurrency}
                 occupiedOf={occupiedOf}
@@ -346,6 +356,10 @@ export function OrderLinesForm({
                 onApplyWindow={commonWindow ? () => applyWindow(commonWindow) : null}
                 onPriceChange={(id, v) => setPrices((p) => ({ ...p, [id]: v }))}
                 onSlotsChange={(id, v) => setSlots((p) => ({ ...p, [id]: v }))}
+                onExclusiveChange={(id, v) => {
+                  setExclusive((p) => ({ ...p, [id]: v }));
+                  if (v) setSlots((p) => ({ ...p, [id]: "1" }));
+                }}
                 onRemove={toggleScreen}
                 onCalendar={openCalendar}
                 onDetail={setDetailScreenId}

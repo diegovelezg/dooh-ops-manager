@@ -1,7 +1,7 @@
 // Validador de líneas de orden (forma + cruces entre líneas nuevas).
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { findLineOverlaps, totalToMinor, validateOrderLines } from "@/lib/order-lines";
+import { findLineOverlaps, normalizeLineExclusive, totalToMinor, validateOrderLines } from "@/lib/order-lines";
 
 const OK = { screen_id: "s1", starts: "2026-11-03", ends: "2026-11-23", total: "2000", notes: null };
 
@@ -65,5 +65,23 @@ describe("order lines", () => {
       "line-4-slots",
       "line-5-slots",
     ]);
+  });
+
+  it("exclusiva exige 1 slot (ocupa toda la pantalla, issue #13)", () => {
+    assert.deepEqual(validateOrderLines([{ ...OK, slots: "1", exclusive: true }]), []);
+    assert.deepEqual(validateOrderLines([{ ...OK, exclusive: true }]), []);
+    const bad = validateOrderLines([{ ...OK, slots: "2", exclusive: true }]);
+    assert.ok(bad.some((p) => p.key === "line-0-slots"));
+  });
+
+  it("normalizeLineExclusive: checkbox y variantes", () => {
+    assert.equal(normalizeLineExclusive(true), true);
+    assert.equal(normalizeLineExclusive("1"), true);
+    assert.equal(normalizeLineExclusive("true"), true);
+    assert.equal(normalizeLineExclusive("exclusiva"), true);
+    assert.equal(normalizeLineExclusive(false), false);
+    assert.equal(normalizeLineExclusive(""), false);
+    assert.equal(normalizeLineExclusive(null), false);
+    assert.equal(normalizeLineExclusive(undefined), false);
   });
 });

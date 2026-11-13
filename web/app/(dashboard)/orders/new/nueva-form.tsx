@@ -92,6 +92,7 @@ export function NuevaOrdenForm({
   const [prices, setPrices] = useState<Record<string, string>>({});
   // Slots por línea: default 1 al agregar la pantalla (se reserva 1 slot).
   const [slots, setSlots] = useState<Record<string, string>>({});
+  const [exclusive, setExclusive] = useState<Record<string, boolean>>({});
   const [calScreenId, setCalScreenId] = useState<string | null>(null);
   const [detailScreenId, setDetailScreenId] = useState<string | null>(null);
   const [availableOnly, setAvailableOnly] = useState(false);
@@ -112,7 +113,7 @@ export function NuevaOrdenForm({
     commonWindowFor,
     nextWindowLabelFor,
     ensureOccupancy,
-  } = useScreenAvailability({ screens, starts, ends, slots });
+  } = useScreenAvailability({ screens, starts, ends, slots, exclusive });
 
   // Agencias del tenant para vincular intermediaria (o texto manual si no existe).
   const agencies = companies.filter((c) => c.kind === "agencia");
@@ -267,7 +268,7 @@ export function NuevaOrdenForm({
     const n = Number(String(prices[id] ?? "").replace(",", "."));
     return Number.isFinite(n) && n > 0 ? n : null;
   };
-  const slotsOf = (id: string) => parseSlotsInput(slots[id]);
+  const slotsOf = (id: string) => (exclusive[id] === true ? 1 : parseSlotsInput(slots[id]));
   const lineTotalOf = (id: string) => {
     const unit = priceOf(id);
     const qty = slotsOf(id);
@@ -275,6 +276,7 @@ export function NuevaOrdenForm({
   };
   const invalidRows = rows.filter((r) => priceOf(r.id) === null);
   const invalidSlotsRows = rows.filter((r) => slotsOf(r.id) === null);
+  const invalidExclRows = rows.filter((r) => exclusive[r.id] === true && parseSlotsInput(slots[r.id]) !== 1);
   const total = rows.reduce((a, r) => a + lineTotalOf(r.id), 0);
 
   const blockedRows = rows.filter((r) => occupiedOf(r.id).length > 0);
@@ -296,6 +298,7 @@ export function NuevaOrdenForm({
   if (rows.length === 0) missing.push("al menos una pantalla");
   else if (invalidRows.length > 0) missing.push(`precio de ${invalidRows.length} pantalla${plural(invalidRows.length)}`);
   else if (invalidSlotsRows.length > 0) missing.push(`slots de ${invalidSlotsRows.length} pantalla${plural(invalidSlotsRows.length)} (1–100)`);
+  else if (invalidExclRows.length > 0) missing.push(`exclusiva con slots ≠ 1 (${invalidExclRows.length})`);
   if (blockedRows.length > 0) missing.push(`${blockedRows.length} pantalla${plural(blockedRows.length)} sin cupo en ese periodo`);
   const canSubmit = !pending && !checking && missing.length === 0;
 
@@ -662,6 +665,7 @@ export function NuevaOrdenForm({
                   <input type="hidden" name="line_ends_at" value={ends} />
                   <input type="hidden" name="line_cant_dias" value={dias ?? ""} />
                   <input type="hidden" name="line_slots" value={slotsOf(s.id) ?? ""} />
+                  <input type="hidden" name="line_exclusive" value={exclusive[s.id] === true ? "1" : ""} />
                   <input type="hidden" name="line_total" value={dias !== null && priceOf(s.id) !== null && slotsOf(s.id) !== null ? String((priceOf(s.id) as number) * (dias as number) * (slotsOf(s.id) as number)) : ""} />
                 </span>
               ))}
@@ -669,6 +673,7 @@ export function NuevaOrdenForm({
                 rows={rows}
                 prices={prices}
                 slots={slots}
+                exclusive={exclusive}
                 dias={dias}
                 currency={currency}
                 occupiedOf={occupiedOf}
@@ -679,6 +684,10 @@ export function NuevaOrdenForm({
                 onApplyWindow={commonWindow ? () => applyWindow(commonWindow) : null}
                 onPriceChange={(id, v) => setPrices((p) => ({ ...p, [id]: v }))}
                 onSlotsChange={(id, v) => setSlots((p) => ({ ...p, [id]: v }))}
+                onExclusiveChange={(id, v) => {
+                  setExclusive((p) => ({ ...p, [id]: v }));
+                  if (v) setSlots((p) => ({ ...p, [id]: "1" }));
+                }}
                 onRemove={toggleScreen}
                 onCalendar={openCalendar}
                 onDetail={setDetailScreenId}

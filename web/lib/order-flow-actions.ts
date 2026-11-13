@@ -141,6 +141,8 @@ export async function signOrderAction(input: {
         const gross = detail.lines.reduce((a, l) => a + Number(l.rate_minor ?? 0), 0);
         const toContact = (c: { name: string; role: string | null; email: string | null; phone: string | null } | null) =>
           c ? { name: c.name, role: c.role, email: c.email, phone: c.phone } : null;
+        const { displayEndOfSafe } = await import("@/lib/format");
+        const { isoDayPart } = await import("@/lib/format");
         snapshot_json = buildOrderSnapshot({
           signed_at: now,
           currency: normalizeCurrency((detail.order.currency as string | null | undefined) ?? "PEN"),
@@ -159,6 +161,22 @@ export async function signOrderAction(input: {
           signer_contact: toContact(detail.contacts.signer),
           payment_contact: toContact(detail.contacts.payment),
           manager_contact: toContact(detail.contacts.manager),
+          lines: detail.lines.map((l) => {
+            const r = l as Record<string, unknown>;
+            const startsRaw = typeof r.starts_at === "string" ? (isoDayPart(r.starts_at) ?? null) : null;
+            const endsRaw = typeof r.ends_at === "string" ? (displayEndOfSafe(r.ends_at) ?? isoDayPart(r.ends_at)) : null;
+            const days = Number(r.cant_dias);
+            const slots = Number(r.cant_slots);
+            return {
+              screen_name: typeof r.screen_name === "string" ? r.screen_name : null,
+              starts: startsRaw,
+              ends: endsRaw ?? startsRaw,
+              days: Number.isSafeInteger(days) && days > 0 ? days : null,
+              slots: Number.isSafeInteger(slots) && slots >= 1 && slots <= 100 ? slots : 1,
+              exclusive: r.is_exclusive === true,
+              total_minor: Number(r.rate_minor ?? 0),
+            };
+          }),
         }) as unknown as Record<string, unknown>;
       }
     } catch {

@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   HOLD_DAYS,
+  dayBlocked,
   displayEndOf,
   isHoldFresh,
   periodBounds,
@@ -57,5 +58,24 @@ describe("bordes de periodo UI ↔ BD", () => {
     assert.throws(() => periodBounds("2026-11-03", "no-fecha"), /Fecha inválida/);
     assert.throws(() => periodBounds("2026-11-24", "2026-11-03"), /Rango inválido/);
     assert.throws(() => displayEndOf("NaN-nada"), /Fecha inválida/);
+  });
+});
+
+describe("dayBlocked (issue #13: capacidad + exclusividad)", () => {
+  it("compartida cabe si hay cupo, bloquea si se excede", () => {
+    assert.equal(dayBlocked({ reserved: 3, capacity: 10, hasExclusive: false, reqSlots: 1, reqExclusive: false }), false);
+    assert.equal(dayBlocked({ reserved: 9, capacity: 10, hasExclusive: false, reqSlots: 1, reqExclusive: false }), false);
+    assert.equal(dayBlocked({ reserved: 10, capacity: 10, hasExclusive: false, reqSlots: 1, reqExclusive: false }), true);
+    assert.equal(dayBlocked({ reserved: 9, capacity: 10, hasExclusive: false, reqSlots: 2, reqExclusive: false }), true);
+  });
+
+  it("exclusiva vigente bloquea todo", () => {
+    assert.equal(dayBlocked({ reserved: 0, capacity: 10, hasExclusive: true, reqSlots: 1, reqExclusive: false }), true);
+    assert.equal(dayBlocked({ reserved: 0, capacity: 10, hasExclusive: true, reqSlots: 1, reqExclusive: true }), true);
+  });
+
+  it("exclusiva pedida requiere día vacío", () => {
+    assert.equal(dayBlocked({ reserved: 0, capacity: 10, hasExclusive: false, reqSlots: 1, reqExclusive: true }), false);
+    assert.equal(dayBlocked({ reserved: 1, capacity: 10, hasExclusive: false, reqSlots: 1, reqExclusive: true }), true);
   });
 });

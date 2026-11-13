@@ -23,11 +23,13 @@ import { plural } from "./types";
 
 /** Tabla de pantallas ya agregadas: precio/día y slots editables, días, subtotal.
  *  Subtotal = precio/día × días × slots (default 1 slot por línea).
+ *  Exclusiva = ocupa toda la pantalla (1 slot, bloquea el resto, issue #13).
  *  SSOT: misma pieza en nueva orden y en editar pantallas (drawer). */
 export function OrderScreensTable({
   rows,
   prices,
   slots,
+  exclusive = {},
   dias,
   currency,
   occupiedOf,
@@ -38,6 +40,7 @@ export function OrderScreensTable({
   onApplyWindow,
   onPriceChange,
   onSlotsChange,
+  onExclusiveChange,
   onRemove,
   onCalendar,
   onDetail,
@@ -47,6 +50,7 @@ export function OrderScreensTable({
   rows: ScreenPick[];
   prices: Record<string, string>;
   slots: Record<string, string>;
+  exclusive?: Record<string, boolean>;
   dias: number | null;
   currency: string;
   occupiedOf: (id: string) => ScreenConflict[];
@@ -57,6 +61,7 @@ export function OrderScreensTable({
   onApplyWindow: (() => void) | null;
   onPriceChange: (id: string, value: string) => void;
   onSlotsChange: (id: string, value: string) => void;
+  onExclusiveChange?: (id: string, value: boolean) => void;
   onRemove: (id: string) => void;
   onCalendar: (id: string) => void;
   onDetail: (id: string) => void;
@@ -102,6 +107,7 @@ export function OrderScreensTable({
           <DataTableTh numeric>Precio/día * ({currency})</DataTableTh>
           <DataTableTh numeric>Días</DataTableTh>
           <DataTableTh numeric>Slots</DataTableTh>
+          <DataTableTh>Excl.</DataTableTh>
           <DataTableTh numeric>Subtotal ({currency})</DataTableTh>
           <DataTableTh aria-label="Acciones" />
         </DataTableHeader>
@@ -156,11 +162,22 @@ export function OrderScreensTable({
                       // validación nativa, ver default de forms).
                       if (/^\d{0,3}$/.test(e.target.value)) onSlotsChange(s.id, e.target.value);
                     }}
-                    disabled={disabled || pending || (hits.length > 0 && (free ?? 0) <= 0)}
+                    disabled={disabled || pending || (hits.length > 0 && (free ?? 0) <= 0) || exclusive[s.id] === true}
                     inputMode="numeric"
                     placeholder="1"
                     aria-label={`Slots ${s.name}`}
                     className="w-20 text-right tabular-nums"
+                  />
+                </DataTableTd>
+                <DataTableTd>
+                  <input
+                    type="checkbox"
+                    checked={exclusive[s.id] === true}
+                    onChange={(e) => onExclusiveChange?.(s.id, e.target.checked)}
+                    disabled={disabled || pending}
+                    aria-label={`Venta exclusiva ${s.name}`}
+                    title="Exclusiva: ocupa toda la pantalla"
+                    className="size-4 accent-current"
                   />
                 </DataTableTd>
                 <DataTableTd numeric className="tabular-nums">
@@ -190,7 +207,7 @@ export function OrderScreensTable({
             );
           })}
           <DataTableRow className="bg-muted/30 font-medium">
-            <DataTableTd colSpan={4}>
+            <DataTableTd colSpan={5}>
               Total · {formatNumber(rows.length)} pantalla{plural(rows.length)}
               {dias !== null ? ` × ${formatNumber(dias)} días` : ""}
             </DataTableTd>

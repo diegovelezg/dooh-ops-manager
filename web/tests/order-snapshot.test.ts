@@ -26,13 +26,37 @@ const BASE = {
 describe("order snapshot", () => {
   it("congela contrapartes, agencia y contactos al firmar", () => {
     const s = buildOrderSnapshot(BASE);
-    assert.equal(s.v, 1);
+    assert.equal(s.v, 2);
     assert.equal(s.advertiser.name, "Hipermercados Tottus S.A.");
     assert.equal(s.billing.tax_id, "20508565934");
     assert.equal(s.agency?.commission_pct, 15);
     assert.equal(s.contacts.billing?.email, "milu.palacios@starcomww.com");
     assert.equal(s.contacts.manager, null);
     assert.equal(s.gross_minor, 500000);
+  });
+
+  it("congela unidad y cantidad contratadas por línea (issue #13)", () => {
+    const s = buildOrderSnapshot({
+      ...BASE,
+      lines: [
+        { screen_name: "MI010", starts: "2026-11-03", ends: "2026-11-09", days: 7, slots: 2, exclusive: false, total_minor: 140000 },
+        { screen_name: "MI011", starts: "2026-11-03", ends: "2026-11-09", days: 7, slots: 1, exclusive: true, total_minor: 200000 },
+      ],
+    });
+    assert.equal(s.lines.length, 2);
+    assert.equal(s.lines[0].slots, 2);
+    assert.equal(s.lines[0].exclusive, false);
+    assert.equal(s.lines[1].exclusive, true);
+    const rt = parseOrderSnapshot(JSON.parse(JSON.stringify(s)));
+    assert.deepEqual(rt, s);
+  });
+
+  it("acepta snapshot legacy v1 (sin líneas)", () => {
+    const legacy = { ...JSON.parse(JSON.stringify(buildOrderSnapshot(BASE))), v: 1 };
+    delete (legacy as Record<string, unknown>).lines;
+    const parsed = parseOrderSnapshot(legacy);
+    assert.ok(parsed);
+    assert.deepEqual(parsed?.lines, []);
   });
 
   it("sin agencia vinculada no hay bloque agencia", () => {

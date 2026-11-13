@@ -19,12 +19,14 @@ export function useScreenAvailability({
   starts,
   ends,
   slots = {},
+  exclusive = {},
   excludeIoId = null,
 }: {
   screens: ScreenPick[];
   starts: string;
   ends: string;
   slots?: Record<string, string>;
+  exclusive?: Record<string, boolean>;
   excludeIoId?: string | null;
 }) {
   const dias = diffDaysInclusive(starts, ends);
@@ -37,7 +39,8 @@ export function useScreenAvailability({
   const [capacities, setCapacities] = useState<Record<string, number>>({});
 
   const qtyOf = (id: string): number => parseSlotsInput(slots[id]) ?? 1;
-  const slotsKey = screens.map((s) => `${s.id}:${qtyOf(s.id)}`).join(",");
+  const exclOf = (id: string): boolean => exclusive[id] === true;
+  const slotsKey = screens.map((s) => `${s.id}:${qtyOf(s.id)}:${exclOf(s.id) ? 1 : 0}`).join(",");
 
   useEffect(() => {
     const h = setTimeout(async () => {
@@ -52,9 +55,10 @@ export function useScreenAvailability({
         const anchor = todayLima();
         const ids = screens.map((s) => s.id);
         const qtyBy: Record<string, number> = Object.fromEntries(ids.map((id) => [id, qtyOf(id)]));
+        const exclBy: Record<string, boolean> = Object.fromEntries(ids.map((id) => [id, exclOf(id)]));
         const [res, occ] = await Promise.all([
-          checkAvailabilityAction({ starts, ends, screenIds: ids, slots: qtyBy, excludeIoId }),
-          getScreenOccupancyAction({ screenIds: ids, from: anchor, slots: qtyBy, excludeIoId }),
+          checkAvailabilityAction({ starts, ends, screenIds: ids, slots: qtyBy, exclusive: exclBy, excludeIoId }),
+          getScreenOccupancyAction({ screenIds: ids, from: anchor, slots: qtyBy, exclusive: exclBy, excludeIoId }),
         ]);
         if (res.ok) {
           setConflicts(res.conflicts);
