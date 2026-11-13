@@ -407,7 +407,7 @@ export function OrdenDrawer({ orderId, myRole, onClose }: { orderId: string; myR
     : st.stage === "cancelada"
       ? "Orden cancelada: revisa los saldos de cobranza que sigan pendientes."
       : st.stage === "atrasada"
-        ? "La fecha de inicio ya llegó: falta autorización o material aprobado. Revisa la salida con el operador."
+        ? "La fecha de inicio ya llegó: falta autorización o material registrado. Registra la URL para emitir."
         : st.stage === "programada"
           ? "Preparada para el próximo período contratado. La emisión se indica según las fechas de pauta."
       : st.index === 0
@@ -415,7 +415,7 @@ export function OrdenDrawer({ orderId, myRole, onClose }: { orderId: string; myR
         : st.index === 1
           ? "Firmada: adjunta la autorización para pasar a Materiales."
           : st.stage === "materiales"
-            ? "En Materiales: falta aprobar QC + legal de todas las piezas."
+            ? "En Materiales: falta registrar la URL del material para emitir."
             : st.stage === "al_aire"
               ? `En período de emisión previsto${o?.ends_at ? ` hasta el ${formatDate(o.ends_at)}` : ""}: el cobro corre en paralelo.`
               : st.stage === "por_certificar"

@@ -424,8 +424,8 @@ export async function getDashboardSnapshot(storeId: string): Promise<DashboardSn
         company: co,
         detail:
           du < 0
-            ? `Salida atrasada: material sin aprobar (QC/legal); revisa la emisión con el operador.`
-            : `Empieza en ${du}d sin material aprobado.`,
+            ? `Salida atrasada: sin material registrado; registra la URL para emitir.`
+            : `Empieza en ${du}d sin material registrado.`,
         startsAt: o.starts_at,
         endsAt: o.ends_at,
       });

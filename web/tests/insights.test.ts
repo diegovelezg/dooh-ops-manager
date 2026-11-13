@@ -132,7 +132,7 @@ describe("muro de insights (issue #11)", () => {
       id: "io-1",
     });
     assert.deepEqual(insightCta({ kind: "material", scopeKind: "order", scopeId: "io-2", links: [] }), {
-      label: "Aprobar material",
+      label: "Registrar material",
       href: "/orders?order=io-2",
       target: "drawer",
       param: "order",

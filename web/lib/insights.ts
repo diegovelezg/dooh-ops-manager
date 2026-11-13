@@ -61,7 +61,7 @@ const KIND_PRIORITY: Record<string, number> = {
 
 const KIND_TITLE: Record<string, string> = {
   sin_om: "Falta OM: no se puede facturar",
-  material: "Material sin aprobar",
+  material: "Sin material registrado",
   sin_evidencia: "Al aire sin evidencia",
   por_certificar: "Terminadas sin certificar",
   termina_sin_relevo: "Termina sin relevo",
@@ -399,6 +399,8 @@ async function narrateFacts(storeId: string, facts: BriefFact[]): Promise<{
       "y da 1 accionable en texto plano. PROHIBIDO URLs, rutas (/orders…),",
       "queries (?order=…) o UUIDs en el body: la card ya tiene botón con",
       "el deep-link. Sin novedad no hay post",
+      "El kind `material` significa sin URL registrada: PROHIBIDO mencionar",
+      "QC/legal o aprobación; el accionable es registrar la URL del material.",
       "Responde SOLO JSON: {\"posts\": [{\"kind\": string, \"body\": string, \"severity\": \"info\"|\"warning\"|\"critical\"}]}.",
       "body: 1-2 frases de explicación con contexto + 1 accionable. Sin cifras nuevas.",
     ].join(" ");

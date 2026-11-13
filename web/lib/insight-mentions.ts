@@ -82,7 +82,7 @@ export interface InsightCta {
 
 const ORDER_CTA_LABEL: Record<string, string> = {
   sin_om: "Registrar OM",
-  material: "Aprobar material",
+  material: "Registrar material",
   sin_evidencia: "Subir evidencia",
   por_certificar: "Certificar",
   termina_sin_relevo: "Ver relevo",

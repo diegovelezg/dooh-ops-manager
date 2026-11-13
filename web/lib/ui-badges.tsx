@@ -93,11 +93,13 @@ export function invoiceBadgeDisplay(status: string | null | undefined): BadgeDis
   return { variant: "secondary", label: s };
 }
 
-/** Aprobación de material: verde o ámbar, sin grises (pendiente = acción). */
+/** Aprobación de material: verde o ámbar, sin grises (pendiente = acción).
+ *  Hoy el material nace aprobado al registrar la URL; pendiente solo existe
+ *  en datos legacy con QC/legal no aprobado. */
 export function approvalBadgeDisplay(approved: boolean): BadgeDisplay & { title: string } {
   return approved
-    ? { variant: "success", label: "Aprobado", title: "Aprobado al adjuntar" }
-    : { variant: "warning", label: "Pendiente", title: "Material pendiente de aprobación" };
+    ? { variant: "success", label: "Aprobado", title: "Aprobado al registrar la URL" }
+    : { variant: "warning", label: "Pendiente", title: "Pieza sin aprobación (solo legacy: QC/legal no aprobado)" };
 }
 
 /* ── Empresas: IO + campaña ───────────────────────────────────── */
