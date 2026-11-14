@@ -155,7 +155,7 @@ export async function getDashboardSnapshot(storeId: string): Promise<DashboardSn
     const [lines, oms, creas, photos] = await Promise.all([
       db
         .from("io_lines")
-        .select("io_id,screen_id,rate_minor,cant_slots,is_exclusive,starts_at,ends_at")
+        .select("io_id,screen_id,rate_minor,cant_slots,starts_at,ends_at")
         .eq("store_id", storeId)
         .in("io_id", oiIds)
         .limit(2000),
@@ -173,7 +173,6 @@ export async function getDashboardSnapshot(storeId: string): Promise<DashboardSn
       screen_id: String(l.screen_id),
       rate_minor: Number(l.rate_minor ?? 0),
       cant_slots: (() => {
-        if (l.is_exclusive === true) return -1; // exclusiva: ocupa toda la capacidad (se resuelve abajo con capOf)
         const n = Number(l.cant_slots ?? 1);
         return Number.isFinite(n) && n >= 1 ? Math.floor(n) : 1;
       })(),
@@ -340,9 +339,7 @@ export async function getDashboardSnapshot(storeId: string): Promise<DashboardSn
           perScreen.set(l.screen_id, set);
         }
         set.add(d);
-        // Exclusiva (-1) = toda la capacidad del día (issue #13).
-        const w = l.cant_slots === -1 ? capOf(l.screen_id) : l.cant_slots;
-        soldByScreen.set(l.screen_id, (soldByScreen.get(l.screen_id) ?? 0) + w);
+        soldByScreen.set(l.screen_id, (soldByScreen.get(l.screen_id) ?? 0) + l.cant_slots);
       }
     }
   }

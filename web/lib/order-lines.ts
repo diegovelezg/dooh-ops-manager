@@ -11,8 +11,6 @@ export interface OrderLineInput {
   total: string | number;
   /** Slots reservados (1–100). Ausente/vacío = 1 (default de filas legacy). */
   slots?: string | number | null;
-  /** Venta exclusiva: ocupa toda la pantalla ese periodo (issue #13). */
-  exclusive?: boolean | null;
   notes?: string | null;
 }
 
@@ -48,13 +46,6 @@ export function normalizeLineSlots(v: unknown, opts: { blankInvalid?: boolean } 
   return n;
 }
 
-/** Exclusividad: checkbox "1"/true la activa; ausente/null = compartida. */
-export function normalizeLineExclusive(v: unknown): boolean {
-  if (v === true) return true;
-  const t = String(v ?? "").trim().toLowerCase();
-  return t === "1" || t === "true" || t === "si" || t === "sí" || t === "exclusiva";
-}
-
 /** Valida forma (tipos, fechas, total). La disponibilidad y el tenant los
  *  valida el servidor contra la BD. Vacío = válido. */
 export function validateOrderLines(lines: OrderLineInput[]): LineProblem[] {
@@ -80,11 +71,6 @@ export function validateOrderLines(lines: OrderLineInput[]): LineProblem[] {
     }
     if (normalizeLineSlots(l?.slots, { blankInvalid: true }) === null) {
       out.push({ key: tag("slots"), message: `Línea ${i + 1}: slots inválidos (1–100).` });
-    }
-    // Exclusiva ocupa toda la pantalla: se contrata como 1 unidad exclusiva
-    // (los slots no suman en ese modo; pedir >1 sería contradictorio).
-    if (normalizeLineExclusive(l?.exclusive) && normalizeLineSlots(l?.slots) !== 1) {
-      out.push({ key: tag("slots"), message: `Línea ${i + 1}: la exclusiva usa 1 slot (ocupa toda la pantalla).` });
     }
     const notes = typeof l?.notes === "string" ? l.notes : "";
     if (notes.trim().length > 2000) {

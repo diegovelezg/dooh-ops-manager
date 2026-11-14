@@ -173,7 +173,6 @@ export async function signOrderAction(input: {
               ends: endsRaw ?? startsRaw,
               days: Number.isSafeInteger(days) && days > 0 ? days : null,
               slots: Number.isSafeInteger(slots) && slots >= 1 && slots <= 100 ? slots : 1,
-              exclusive: r.is_exclusive === true,
               total_minor: Number(r.rate_minor ?? 0),
             };
           }),

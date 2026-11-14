@@ -61,21 +61,17 @@ describe("bordes de periodo UI ↔ BD", () => {
   });
 });
 
-describe("dayBlocked (issue #13: capacidad + exclusividad)", () => {
+describe("dayBlocked (issue #13: regla única de capacidad)", () => {
   it("compartida cabe si hay cupo, bloquea si se excede", () => {
-    assert.equal(dayBlocked({ reserved: 3, capacity: 10, hasExclusive: false, reqSlots: 1, reqExclusive: false }), false);
-    assert.equal(dayBlocked({ reserved: 9, capacity: 10, hasExclusive: false, reqSlots: 1, reqExclusive: false }), false);
-    assert.equal(dayBlocked({ reserved: 10, capacity: 10, hasExclusive: false, reqSlots: 1, reqExclusive: false }), true);
-    assert.equal(dayBlocked({ reserved: 9, capacity: 10, hasExclusive: false, reqSlots: 2, reqExclusive: false }), true);
+    assert.equal(dayBlocked({ reserved: 3, capacity: 10, reqSlots: 1 }), false);
+    assert.equal(dayBlocked({ reserved: 9, capacity: 10, reqSlots: 1 }), false);
+    assert.equal(dayBlocked({ reserved: 10, capacity: 10, reqSlots: 1 }), true);
+    assert.equal(dayBlocked({ reserved: 9, capacity: 10, reqSlots: 2 }), true);
   });
 
-  it("exclusiva vigente bloquea todo", () => {
-    assert.equal(dayBlocked({ reserved: 0, capacity: 10, hasExclusive: true, reqSlots: 1, reqExclusive: false }), true);
-    assert.equal(dayBlocked({ reserved: 0, capacity: 10, hasExclusive: true, reqSlots: 1, reqExclusive: true }), true);
-  });
-
-  it("exclusiva pedida requiere día vacío", () => {
-    assert.equal(dayBlocked({ reserved: 0, capacity: 10, hasExclusive: false, reqSlots: 1, reqExclusive: true }), false);
-    assert.equal(dayBlocked({ reserved: 1, capacity: 10, hasExclusive: false, reqSlots: 1, reqExclusive: true }), true);
+  it("pedir capacidad completa = exclusiva (exige día vacío, bloquea el resto)", () => {
+    assert.equal(dayBlocked({ reserved: 0, capacity: 10, reqSlots: 10 }), false);
+    assert.equal(dayBlocked({ reserved: 1, capacity: 10, reqSlots: 10 }), true);
+    assert.equal(dayBlocked({ reserved: 10, capacity: 10, reqSlots: 1 }), true);
   });
 });

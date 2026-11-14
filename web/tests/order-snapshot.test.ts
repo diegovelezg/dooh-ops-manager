@@ -39,14 +39,13 @@ describe("order snapshot", () => {
     const s = buildOrderSnapshot({
       ...BASE,
       lines: [
-        { screen_name: "MI010", starts: "2026-11-03", ends: "2026-11-09", days: 7, slots: 2, exclusive: false, total_minor: 140000 },
-        { screen_name: "MI011", starts: "2026-11-03", ends: "2026-11-09", days: 7, slots: 1, exclusive: true, total_minor: 200000 },
+        { screen_name: "MI010", starts: "2026-11-03", ends: "2026-11-09", days: 7, slots: 2, total_minor: 140000 },
+        { screen_name: "MI011", starts: "2026-11-03", ends: "2026-11-09", days: 7, slots: 10, total_minor: 200000 },
       ],
     });
     assert.equal(s.lines.length, 2);
     assert.equal(s.lines[0].slots, 2);
-    assert.equal(s.lines[0].exclusive, false);
-    assert.equal(s.lines[1].exclusive, true);
+    assert.equal(s.lines[1].slots, 10);
     const rt = parseOrderSnapshot(JSON.parse(JSON.stringify(s)));
     assert.deepEqual(rt, s);
   });

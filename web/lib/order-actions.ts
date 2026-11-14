@@ -97,21 +97,17 @@ export async function createOrderAction(form: FormData): Promise<CrmState> {
   const totals = form.getAll("line_total").map((v) => String(v).trim().replace(",", "."));
   const dias = form.getAll("line_cant_dias").map((v) => String(v).trim().replace(",", "."));
   const slotsRaw = form.getAll("line_slots").map((v) => String(v).trim());
-  const exclusiveRaw = form.getAll("line_exclusive").map((v) => String(v).trim());
   if (slotsRaw.length > 0 && slotsRaw.length !== screens.length) {
     return { ok: false, message: "Líneas incompletas." };
   }
-  if (exclusiveRaw.length > 0 && exclusiveRaw.length !== screens.length) {
-    return { ok: false, message: "Líneas incompletas." };
-  }
-  const { normalizeLineSlots, normalizeLineExclusive } = await import("@/lib/order-lines");
+  const { normalizeLineSlots } = await import("@/lib/order-lines");
   if (screens.length === 0 || screens.some((s) => !s)) {
     return { ok: false, message: "Cada línea necesita su pantalla." };
   }
   if (![inis.length, fins.length, totals.length, dias.length].every((n) => n === screens.length)) {
     return { ok: false, message: "Líneas incompletas." };
   }
-  const parsedLines: Array<{ screen: string; starts: string; ends: string; total: number; cant_dias: number | null; cant_slots: number; exclusive: boolean }> = [];
+  const parsedLines: Array<{ screen: string; starts: string; ends: string; total: number; cant_dias: number | null; cant_slots: number }> = [];
   const nextDayLima = (d: string): string => limaDayStart(addDays(d, 1));
   for (let i = 0; i < screens.length; i++) {
     if (!inis[i] || !fins[i]) return { ok: false, message: `Línea ${i + 1}: periodo requerido.` };
@@ -121,8 +117,6 @@ export async function createOrderAction(form: FormData): Promise<CrmState> {
     const cant = dias[i] ? Number(dias[i]) : NaN;
     const cantSlots = normalizeLineSlots(slotsRaw[i] ?? "", { blankInvalid: true });
     if (cantSlots === null) return { ok: false, message: `Línea ${i + 1}: slots inválidos (1–100).` };
-    const exclusive = exclusiveRaw.length > 0 ? normalizeLineExclusive(exclusiveRaw[i] ?? "") : false;
-    if (exclusive && cantSlots !== 1) return { ok: false, message: `Línea ${i + 1}: la exclusiva usa 1 slot (ocupa toda la pantalla).` };
     parsedLines.push({
       screen: screens[i],
       starts: limaDayStart(inis[i]),
@@ -131,7 +125,6 @@ export async function createOrderAction(form: FormData): Promise<CrmState> {
       total,
       cant_dias: Number.isFinite(cant) && cant > 0 ? cant : null,
       cant_slots: cantSlots,
-      exclusive,
     });
   }
   try {
@@ -149,7 +142,7 @@ export async function createOrderAction(form: FormData): Promise<CrmState> {
     }
     const hit = await findLineConflicts(
       t.storeId,
-      parsedLines.map((l, i) => ({ screen_id: l.screen, starts: inis[i], ends: fins[i], slots: l.cant_slots, exclusive: l.exclusive })),
+      parsedLines.map((l, i) => ({ screen_id: l.screen, starts: inis[i], ends: fins[i], slots: l.cant_slots })),
     );
     if (hit) {
       const who = [hit.conflict.io_number, hit.conflict.brand].filter(Boolean).join(" · ");
@@ -362,7 +355,6 @@ export async function createOrderAction(form: FormData): Promise<CrmState> {
           cant_meses: null,
           cant_dias: l.cant_dias,
           cant_slots: l.cant_slots,
-          is_exclusive: l.exclusive,
           notes: null,
         })),
       );
@@ -371,16 +363,15 @@ export async function createOrderAction(form: FormData): Promise<CrmState> {
         log.warn("createOrderAction", { fail: `DB write líneas: ${lerr.message}` });
         return { ok: false, message: `DB write líneas: ${lerr.message}` };
       }
-      // Guardia transaccional en BD (issue #13, concurrentes): verifica cupo +
-      // exclusividad con lock por tienda. Si falla, compensa (borra la orden;
-      // las líneas caen por FK) para no dejar sobreventa. Falla cerrado.
+      // Guardia transaccional en BD (issue #13, concurrentes): verifica cupo
+      // con lock por tienda. Si falla, compensa (borra la orden; las líneas
+      // caen por FK) para no dejar sobreventa. Falla cerrado.
       try {
         const guardLines = parsedLines.map((l, i) => ({
           screen_id: l.screen,
           starts: inis[i],
           ends: fins[i],
           slots: String(l.cant_slots),
-          exclusive: l.exclusive,
         }));
         const { error: gerr } = await db.rpc("io_assert_capacity", {
           p_store: t.storeId,
@@ -389,13 +380,13 @@ export async function createOrderAction(form: FormData): Promise<CrmState> {
         });
         if (gerr) {
           const msg = String(gerr.message ?? "");
-          // Sin función/columna (migración pendiente): degradación elegante —
+          // Sin función (migración pendiente): degradación elegante —
           // el pre-check de arriba ya validó; no se borra la venta.
-          if (/function|column|is_exclusive|assert_capacity/i.test(msg)) {
+          if (/function|column|assert_capacity/i.test(msg)) {
             log.warn("createOrderAction", { fail: `capacity guard ausente: ${msg}` });
           } else {
             await db.from("io_orders").delete().eq("store_id", t.storeId).eq("id", ioId);
-            if (/sin slots|exclusiv|cupo/i.test(msg)) {
+            if (/sin slots|cupo/i.test(msg)) {
               log.warn("createOrderAction", { fail: `capacity guard: ${msg}` });
               return { ok: false, message: "Sin cupo en ese periodo (otra venta lo tomó primero). Reintenta." };
             }
@@ -695,7 +686,6 @@ export async function updateOrderLinesAction(input: {
     ends: unknown;
     total: unknown;
     slots?: unknown;
-    exclusive?: unknown;
     notes?: unknown;
   }>;
 }): Promise<CrmState> {
@@ -703,7 +693,7 @@ export async function updateOrderLinesAction(input: {
   if ("error" in t) return { ok: false, message: t.error };
   const orderId = String(input.orderId ?? "").trim();
   if (!orderId) return { ok: false, message: "Falta la orden." };
-  const { validateOrderLines, totalToMinor, findLineOverlaps, normalizeLineSlots, normalizeLineExclusive } = await import("@/lib/order-lines");
+  const { validateOrderLines, totalToMinor, findLineOverlaps, normalizeLineSlots } = await import("@/lib/order-lines");
   const lines = ((input.lines ?? []) as Array<Record<string, unknown>>).map((l) => ({
     screen_id: typeof l.screen_id === "string" ? l.screen_id.trim() : "",
     starts: typeof l.starts === "string" ? l.starts.trim() : "",
@@ -711,7 +701,6 @@ export async function updateOrderLinesAction(input: {
     total: (l.total as string | number) ?? "",
     // Sin coalescer a "": ausente (legacy/API) = default 1, explícito vacío = inválido (fail-closed).
     slots: (l.slots as string | number | undefined) ?? undefined,
-    exclusive: normalizeLineExclusive(l.exclusive ?? null),
     notes: typeof l.notes === "string" ? l.notes : null,
   }));
   const problems = validateOrderLines(lines);
@@ -756,7 +745,7 @@ export async function updateOrderLinesAction(input: {
     const { findLineConflicts } = await import("@/lib/availability");
     const hit = await findLineConflicts(
       t.storeId,
-      lines.map((l, i) => ({ screen_id: l.screen_id, starts: l.starts, ends: l.ends, slots: slotsList[i] ?? 1, exclusive: l.exclusive === true })),
+      lines.map((l, i) => ({ screen_id: l.screen_id, starts: l.starts, ends: l.ends, slots: slotsList[i] ?? 1 })),
       { excludeIoId: orderId },
     );
     if (hit) {
@@ -776,7 +765,6 @@ export async function updateOrderLinesAction(input: {
         ends: l.ends,
         total: (totals[i] as number) / 100,
         slots: slotsList[i] as number,
-        exclusive: l.exclusive === true,
         notes: typeof l.notes === "string" && l.notes.trim() ? l.notes.trim().slice(0, 2000) : null,
       })),
       p_actor: actor,
@@ -784,7 +772,7 @@ export async function updateOrderLinesAction(input: {
     if (rpcerr) {
       const msg = String(rpcerr.message ?? "");
       // La BD es la autoridad ante concurrentes: traduce el raise a UX.
-      if (/sin slots|cupo|exclusiv/i.test(msg)) {
+      if (/sin slots|cupo/i.test(msg)) {
         log.warn("updateOrderLinesAction", { fail: `capacity guard: ${msg}` });
         return { ok: false, message: "Sin cupo en ese periodo (otra venta lo tomó primero). Reintenta." };
       }
@@ -808,7 +796,6 @@ export async function checkAvailabilityAction(input: {
   excludeIoId?: string | null;
   screenIds?: string[];
   slots?: Record<string, number>;
-  exclusive?: Record<string, boolean>;
 }): Promise<AvailabilityState> {
   const t = await resolveTenantStore();
   if ("error" in t) return { ok: false, conflicts: [], remaining: {}, capacities: {}, message: t.error };
@@ -822,7 +809,6 @@ export async function checkAvailabilityAction(input: {
     const res = await getPeriodAvailability(t.storeId, ids.length > 0 ? ids : null, input.starts, input.ends, {
       excludeIoId: exclude,
       slots: input.slots ?? {},
-      exclusive: input.exclusive ?? {},
     });
     return { ok: true, conflicts: res.conflicts, remaining: res.remaining, capacities: res.capacities, message: "" };
   } catch (e) {
@@ -845,7 +831,6 @@ export async function getScreenOccupancyAction(input: {
   from: string;
   excludeIoId?: string | null;
   slots?: Record<string, number>;
-  exclusive?: Record<string, boolean>;
 }): Promise<OccupancyState> {
   const t = await resolveTenantStore();
   if ("error" in t) return { ok: false, occupancy: {}, capacities: {}, message: t.error };
@@ -857,7 +842,7 @@ export async function getScreenOccupancyAction(input: {
     const exclude = typeof input.excludeIoId === "string" && input.excludeIoId ? input.excludeIoId : null;
     const { getScreenCapacities } = await import("@/lib/availability");
     const [occupancy, caps] = await Promise.all([
-      getScreenOccupancy(t.storeId, ids, input.from, { excludeIoId: exclude, slots: input.slots ?? {}, exclusive: input.exclusive ?? {} }),
+      getScreenOccupancy(t.storeId, ids, input.from, { excludeIoId: exclude, slots: input.slots ?? {} }),
       getScreenCapacities(t.storeId, ids),
     ]);
     return { ok: true, occupancy, capacities: Object.fromEntries(caps.entries()), message: "" };
@@ -871,7 +856,6 @@ export interface ScreenDayLine {
   io_number: string | null;
   brand: string | null;
   slots: number;
-  exclusive: boolean;
   status: string;
   starts: string;
   ends: string;
@@ -921,7 +905,7 @@ export async function getScreenDayDetailAction(input: {
     const lines: ScreenDayLine[] = [];
     const { data: olines, error: lerr } = await db
       .from("io_lines")
-      .select("starts_at,ends_at,cant_slots,is_exclusive,io_orders!insertion_order_lines_io_id_fkey!inner(io_number,brand,status,created_at)")
+      .select("starts_at,ends_at,cant_slots,io_orders!insertion_order_lines_io_id_fkey!inner(io_number,brand,status,created_at)")
       .eq("store_id", t.storeId)
       .eq("screen_id", screenId)
       .lt("starts_at", qEnd)
@@ -936,7 +920,6 @@ export async function getScreenDayDetailAction(input: {
         io_number: typeof o.io_number === "string" ? o.io_number : null,
         brand: typeof o.brand === "string" ? o.brand : null,
         slots: Number.isFinite(qty) && qty >= 1 ? Math.floor(qty) : 1,
-        exclusive: l.is_exclusive === true,
         status: typeof o.status === "string" ? o.status : "—",
         starts: isoDayPart(l.starts_at) ?? "",
         ends: displayEndOf(String(l.ends_at)),
@@ -966,7 +949,6 @@ export async function getScreenDayDetailAction(input: {
           io_number: o && typeof o.io_number === "string" ? o.io_number : null,
           brand: o && typeof o.brand === "string" ? o.brand : null,
           slots: 1,
-          exclusive: false,
           status: typeof b.status === "string" ? b.status : "—",
           starts: isoDayPart(b.starts_at) ?? "",
           ends: displayEndOf(String(b.ends_at)),

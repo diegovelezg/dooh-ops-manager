@@ -14,7 +14,6 @@ export interface SnapshotLine {
   ends: string | null;
   days: number | null;
   slots: number;
-  exclusive: boolean;
   total_minor: number;
 }
 
@@ -91,7 +90,6 @@ export function buildOrderSnapshot(input: {
     ends?: string | null;
     days?: number | null;
     slots?: number | null;
-    exclusive?: boolean | null;
     total_minor?: number | null;
   }> | null;
 }): OrderSnapshot {
@@ -110,7 +108,6 @@ export function buildOrderSnapshot(input: {
       ends: typeof l.ends === "string" && l.ends ? l.ends : null,
       days: Number.isSafeInteger(days) && days > 0 ? days : null,
       slots: Number.isSafeInteger(slots) && slots >= 1 && slots <= 100 ? slots : 1,
-      exclusive: l.exclusive === true,
       total_minor: Number.isFinite(total) && total >= 0 ? Math.round(total) : 0,
     };
   });
@@ -203,7 +200,6 @@ export function parseOrderSnapshot(v: unknown): OrderSnapshot | null {
       ends: optStr(r, "ends"),
       days: Number.isSafeInteger(days) && days > 0 ? days : null,
       slots: Number.isSafeInteger(slots) && slots >= 1 && slots <= 100 ? slots : 1,
-      exclusive: r.exclusive === true,
       total_minor: Number.isFinite(total) && total >= 0 ? Math.round(total) : 0,
     };
   });

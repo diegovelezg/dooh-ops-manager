@@ -11,19 +11,27 @@ Fecha: 2026-11-13. Alcance: cerrar el issue #13 sin reescribir históricos.
 - **Capacidad** slots/día por pantalla: `inv_slots` activos; sin slots
   explícitos, `sys_stores.default_slots_per_screen` (default 10).
   Pantalla con filas de slots todas inactivas => capacidad 0 (pausada).
-- **Línea** = pantalla + periodo inclusivo + slots (1–100) + flag
-  `is_exclusive` + total. La exclusiva se contrata como **1 slot exclusivo**.
-- **Exclusividad explícita**: una línea exclusiva ocupa toda la pantalla
-  ese periodo. Regla:
-  - día con exclusiva vigente => bloqueado para todo lo demás;
-  - exclusiva pedida => requiere día vacío (reservados = 0);
-  - exclusiva pedida con slots ≠ 1 => inválida (contradicción).
+- **Línea** = pantalla + periodo inclusivo + slots (1–100) + total.
+  Sin campo aparte para exclusiva.
+
+## Exclusividad = convención (sin campo)
+
+- Pedir **`slots == capacidad`** ocupa toda la pantalla: la regla única
+  (`reservados + pedidos > capacidad` => bloqueado) ya exige día vacío
+  para esa línea e impide cualquier otra incompatible. No hace falta
+  ningún flag: la matemática lo cubre.
+- La UI lo hace explícito sin campo: la tabla muestra
+  "Ocupa toda la pantalla" cuando `slots == capacidad`, y el drawer
+  muestra los slots contratados por línea.
+- Límite conocido: si la capacidad de una pantalla cambia después
+  (más `inv_slots` o nuevo default), una línea vieja con N slots ya no
+  equivale a "toda la pantalla". Se acepta: la capacidad se lee siempre
+  en vivo y la línea conserva lo contratado (sus N slots).
 
 ## Regla única de capacidad (selección, guardado, ocupación)
 
-- El día-pantalla bloquea si `reservados + pedidos > capacidad`,
-  o si hay exclusiva vigente, o si la pedida es exclusiva y el día no
-  está vacío. Función pura: `dayBlocked` en `web/lib/availability.ts`.
+- El día-pantalla bloquea si `reservados + pedidos > capacidad`.
+  Función pura: `dayBlocked` en `web/lib/availability.ts`.
 - Fuentes vigentes: líneas de órdenes no canceladas + bookings no
   cancelados (1 slot c/u). Borrador aparta solo si fresco
   (`created_at + 7 días > ahora`, `HOLD_DAYS`).
@@ -42,21 +50,20 @@ Fecha: 2026-11-13. Alcance: cerrar el issue #13 sin reescribir históricos.
 - La orden y su drawer muestran **unidad y cantidad**: Slots por línea
   (`orden-drawer.tsx`, `OrderScreensTable`) y foto inmutable al firmar:
   `OrderSnapshot v2` incluye `lines[]` (pantalla, periodo, días, slots,
-  exclusiva, total). `parseOrderSnapshot` acepta v1 (legacy, sin líneas)
-  y v2.
+  total). `parseOrderSnapshot` acepta v1 (legacy, sin líneas) y v2.
 
 ## Históricos (sin cambio silencioso)
 
-- Migraciones aditivas: `cant_slots` default 1, `is_exclusive` default
-  false, `default_slots_per_screen` default 10. **No se reescriben filas.**
+- Migraciones aditivas: `cant_slots` default 1,
+  `default_slots_per_screen` default 10. **No se reescriben filas.**
 - Interpretación documentada: las órdenes legacy (creadas cuando
-  cualquier solape bloqueaba) se leen hoy como **1 slot no exclusivo**
+  cualquier solape bloqueaba) se leen hoy como **1 slot**
   sobre capacidad 10. Pueden compartir pantalla con ventas nuevas; eso
   es lectura futura, no alteración de su compromiso firmado (el snapshot
   v1 sigue válido y el PDF prefiere snapshot).
-- Verificación: `npm test` (pure: `dayBlocked`, `normalizeLineExclusive`,
-  snapshot v2, validación exclusiva) + funcional manual por criterio:
+- Verificación: `npm test` (pure: `dayBlocked`, snapshot v2) +
+  funcional manual por criterio:
   1. dos anunciantes comparten sin conflicto artificial;
   2. exceso rechazado incl. concurrentes (RPC);
-  3. exclusiva bloquea incompatibles;
+  3. `slots == capacidad` bloquea incompatibles;
   4. orden/doc muestran unidad y cantidad.

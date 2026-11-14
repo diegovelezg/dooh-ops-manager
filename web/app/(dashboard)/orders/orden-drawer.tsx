@@ -762,7 +762,6 @@ export function OrdenDrawer({ orderId, myRole, onClose }: { orderId: string; myR
                         </DrawerTableTd>
                         <DrawerTableTd numeric className="text-xs tabular-nums">
                           {typeof l.cant_slots === "number" && l.cant_slots >= 1 ? l.cant_slots : 1}
-                          {l.is_exclusive === true ? " · Excl." : ""}
                         </DrawerTableTd>
                         <DrawerTableTd numeric className="tabular-nums">
                           <Money amountMinor={l.rate_minor as number} currency={orderCurrency} />
