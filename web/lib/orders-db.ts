@@ -1,6 +1,11 @@
-// Lecturas de órdenes (service_role, como crm-db). La etapa se deriva en JS
+import { workflowRows, type WorkflowRows } from "@/lib/order-workflow-reads";
+import { commercialState, isAuthorized, materialsCovered, deliveriesCovered, supplierConfirmed } from "@/lib/order-workflow";
+// Lecturas de órdenes sobre SurrealDB. La etapa se deriva en JS
 // con orderStage: volumen bajo (<200), sin paginación exacta que mentir.
-import { getSupabase } from "@/lib/supabase";
+import { getStoreTimeZone } from "@/lib/stores-db";
+import { getOrder, listChildrenOf, listChildrenOfOne, listOrderRows } from "@/lib/orders-store";
+import { listCompanies, listContactsWithCompany } from "@/lib/crm-store";
+import { listScreensBrief } from "@/lib/screens-store";
 import { joinHaystack, matchScore, matchTokens, normalizeSearch, tokenizeSearch } from "@/lib/search-text";
 import { orderStage, orderTiming, type OrderStageKey } from "@/lib/order-stage";
 import { billingStatus, toBillingInvoice, type BillingStatusKey } from "@/lib/billing-status";
@@ -9,6 +14,7 @@ import { invoiceMatchesOrder, normalizeCurrency } from "@/lib/currency";
 export interface OrderRow {
   id: string;
   io_number: string;
+  commercial_state: string;
   brand: string | null;
   status: string;
   starts_at: string | null;
@@ -37,17 +43,7 @@ export async function listOrders(
   storeId: string,
   opts: { q?: string; stage?: OrderStageKey | null; billing?: BillingStatusKey | null } = {},
 ): Promise<OrderRow[]> {
-  const db = getSupabase();
-  const { data, error } = await db
-    .from("io_orders")
-    .select(
-      "id,io_number,brand,status,starts_at,ends_at,payment_terms_days,advertiser_company_id,billing_company_id,currency",
-    )
-    .eq("store_id", storeId)
-    .order("starts_at", { ascending: false })
-    .limit(200);
-  if (error) throw new Error(`Orders read: ${error.message}`);
-  const allRows = (data ?? []) as Array<Record<string, unknown>>;
+  const allRows = await listOrderRows(storeId, 200);
   if (allRows.length === 0) return [];
 
   // Nombres primero: el filtro fuzzy cruza IO + marca + anunciante + facturación.
@@ -58,13 +54,7 @@ export async function listOrders(
   ];
   const nameByPre = new Map<string, string>();
   if (preIds.length > 0) {
-    const { data: preCos, error: preCosError } = await db
-      .from("crm_companies")
-      .select("id,name")
-      .eq("store_id", storeId)
-      .in("id", preIds);
-    if (preCosError) throw new Error(`Orders read: ${preCosError.message}`);
-    for (const c of (preCos ?? []) as Array<Record<string, unknown>>) {
+    for (const c of await listCompanies(storeId, preIds)) {
       nameByPre.set(String(c.id), String(c.name ?? ""));
     }
   }
@@ -90,63 +80,41 @@ export async function listOrders(
   const rows = ranked.map((s) => s.r);
   const ids = rows.map((r) => String(r.id));
 
-  const [lines, oms, creas, photos, invs] = await Promise.all([
-    db.from("io_lines").select("io_id,rate_minor,starts_at,ends_at").eq("store_id", storeId).in("io_id", ids),
-    db.from("io_agency_orders").select("io_id").eq("store_id", storeId).in("io_id", ids),
-    db.from("io_creatives").select("io_id,qc_status,legal_status").eq("store_id", storeId).in("io_id", ids),
-    db.from("io_photo_checks").select("io_id").eq("store_id", storeId).in("io_id", ids),
-    db.from("io_invoices").select("io_id,amount_minor,currency,status,issue_date,due_date,payments:io_invoice_payments!io_invoice_payments_same_store_fk(*)").eq("store_id", storeId).in("io_id", ids),
-  ]);
   // Hijas: fail-closed — cualquier hija caída lanza (nunca 0 silencioso).
-  for (const [name, res] of [
-    ["lines", lines],
-    ["oms", oms],
-    ["creas", creas],
-    ["photos", photos],
-    ["invs", invs],
-  ] as const) {
-    if (res.error) throw new Error(`Orders read (${name}): ${res.error.message}`);
-  }
+  const { lines, oms, creatives: creas, photos, invoices: invs } = await listChildrenOf(storeId, ids);
   // Nombres ya resueltos arriba para el filtro (mismo mapa).
   const nameBy = nameByPre;
   const linesBy = new Map<string, { n: number; gross: number }>();
-  for (const l of (lines.data ?? []) as Array<Record<string, unknown>>) {
+  for (const l of lines) {
     const k = String(l.io_id);
     const prev = linesBy.get(k) ?? { n: 0, gross: 0 };
     prev.n += 1;
     prev.gross += Number(l.rate_minor ?? 0);
     linesBy.set(k, prev);
   }
-  const omBy = new Set(((oms.data ?? []) as Array<Record<string, unknown>>).map((o) => String(o.io_id)));
-  const creaBy = new Map<string, { pending: boolean; any: boolean }>();
-  for (const c of (creas.data ?? []) as Array<Record<string, unknown>>) {
-    const k = String(c.io_id);
-    const prev = creaBy.get(k) ?? { pending: false, any: false };
-    prev.any = true;
-    if (c.qc_status !== "approved" || c.legal_status !== "approved") prev.pending = true;
-    creaBy.set(k, prev);
-  }
-  const photoBy = new Set(((photos.data ?? []) as Array<Record<string, unknown>>).map((p) => String(p.io_id)));
+  const workflow = await workflowRows(storeId, ids);
   const invBy = new Map<string, Array<Record<string, unknown>>>();
-  for (const v of (invs.data ?? []) as Array<Record<string, unknown>>) {
+  for (const v of invs) {
     const k = String(v.io_id);
     const arr = invBy.get(k) ?? [];
     arr.push(v);
     invBy.set(k, arr);
   }
 
+  const tz = await getStoreTimeZone(storeId);
   const t = now();
   const out: OrderRow[] = rows.map((r) => {
     const id = String(r.id);
-    const timing = orderTiming(r, ((lines.data ?? []) as Array<Record<string, unknown>>).filter((l) => l.io_id === id), t);
-    const crea = creaBy.get(id);
+    const timing = orderTiming(r, (lines).filter((l) => l.io_id === id), t, tz);
+    const ownLines = lines.filter(l => l.io_id === id);
+    const authorized = isAuthorized(r, oms.filter(d => d.io_id === id));
     const { index, stage } = orderStage({
       status: (r.status as string | null) ?? null,
       signed: r.status === "signed",
-      hasOm: omBy.has(id),
-      materialsOk: crea ? crea.any && !crea.pending : false,
+      hasOm: authorized,
+      materialsOk: materialsCovered(ownLines, creas.filter(c => c.io_id === id)) && ownLines.every(l => supplierConfirmed(l, workflow.purchases)),
       ...timing,
-      certified: photoBy.has(id),
+      certified: deliveriesCovered(ownLines, workflow.deliveries, photos),
     });
     const agg = linesBy.get(id) ?? { n: 0, gross: 0 };
     const invRows = invBy.get(id) ?? [];
@@ -161,9 +129,11 @@ export async function listOrders(
       payment_terms_days:
         typeof r.payment_terms_days === "number" ? (r.payment_terms_days as number) : null,
       now: t,
+      tz,
     });
     return {
       id,
+      commercial_state: commercialState(r,t),
       io_number: String(r.io_number ?? ""),
       brand: (r.brand as string | null) ?? null,
       status: String(r.status ?? ""),
@@ -176,7 +146,7 @@ export async function listOrders(
       currency: orderCurrency,
       stage,
       stage_index: index,
-      has_om: omBy.has(id),
+      has_om: authorized,
       billing: bill.status,
       invoiced_minor: bill.invoiced_minor,
       paid_minor: bill.paid_minor,
@@ -200,13 +170,12 @@ export interface OrderContactRef {
   is_primary: boolean;
 }
 
-/** Fila crm_contacts (+ `crm_companies(name)` embebido) → ref para pickers y PDF. */
+/** Contacto (+ `company_name` de su empresa) → ref para pickers y PDF. */
 export function toContactRef(r: Record<string, unknown>): OrderContactRef {
   const first = typeof r.first_name === "string" ? r.first_name.trim() : "";
   const last = typeof r.last_name === "string" ? r.last_name.trim() : "";
   const email = typeof r.email === "string" && r.email.trim() ? r.email.trim() : null;
-  const v = r.crm_companies as unknown as { name?: unknown } | null;
-  const companyName = v && typeof v.name === "string" && v.name.trim() ? v.name.trim() : null;
+  const companyName = typeof r.company_name === "string" && r.company_name.trim() ? r.company_name.trim() : null;
   return {
     id: String(r.id),
     company_id: r.company_id != null ? String(r.company_id) : null,
@@ -220,6 +189,8 @@ export function toContactRef(r: Record<string, unknown>): OrderContactRef {
 }
 
 export interface OrderDetail {
+  workflow: WorkflowRows;
+  readiness: { authorized: boolean; materials: boolean; certified: boolean };
   order: Record<string, unknown>;
   advertiser_name: string | null;
   /** Contactos vinculados por rol (FK); el texto libre queda como fallback. */
@@ -256,59 +227,38 @@ export interface OrderDetail {
 }
 
 export async function getOrderDetail(storeId: string, id: string): Promise<OrderDetail | null> {
-  const db = getSupabase();
-  const { data: order, error } = await db
-    .from("io_orders")
-    .select("*")
-    .eq("store_id", storeId)
-    .eq("id", id)
-    .maybeSingle();
-  if (error) throw new Error(`Order read: ${error.message}`);
-  if (!order) return null;
-  const o = order as Record<string, unknown>;
+  const o = await getOrder(storeId, id);
+  if (!o) return null;
   const refIds = ["billing_contact_id", "signer_contact_id", "payment_contact_id", "manager_contact_id"]
     .map((k) => (typeof o[k] === "string" && o[k] ? String(o[k]) : null))
     .filter((x): x is string => x !== null);
-  const [cos, lines, oms, creas, bookings, photos, invs, refs] = await Promise.all([
-    db.from("crm_companies").select("id,name,kind,tax_id,city,country,address,agency_commission_pct").eq("store_id", storeId).in(
-      "id",
-      [o.advertiser_company_id, o.billing_company_id, o.agency_company_id].filter(Boolean).map(String),
-    ),
-    db
-      .from("io_lines")
-      .select("id,starts_at,ends_at,rate_minor,tarifa_regular_minor,cant_meses,cant_dias,cant_slots,notes,screen_id")
-      .eq("store_id", storeId)
-      .eq("io_id", id)
-      .order("starts_at", { ascending: true }),
-    db.from("io_agency_orders").select("id,kind,code,portal,issued_at,document_url,notes,created_by").eq("store_id", storeId).eq("io_id", id),
-    db.from("io_creatives").select("id,name,qc_status,legal_status,file_url,created_by,duration_s,width_px,height_px,aspect").eq("store_id", storeId).eq("io_id", id),
-    db.from("inv_bookings").select("id", { count: "exact", head: true }).eq("store_id", storeId).eq("insertion_order_id", id),
-    db.from("io_photo_checks").select("id,photo_url,video_url,taken_at,created_by").eq("store_id", storeId).eq("io_id", id).order("taken_at", { ascending: false }).limit(50),
-    db.from("io_invoices").select("id,number,amount_minor,currency,status,issue_date,due_date,payments:io_invoice_payments!io_invoice_payments_same_store_fk(*)").eq("store_id", storeId).eq("io_id", id),
-    refIds.length > 0
-      ? db.from("crm_contacts").select("id,company_id,first_name,last_name,email,phone,job_title,is_primary,crm_companies!contacts_company_id_fkey(name)").eq("store_id", storeId).in("id", refIds)
-      : Promise.resolve({ data: [], error: null }),
+  const [cos, children, refs, workflow] = await Promise.all([
+    listCompanies(storeId, [o.advertiser_company_id, o.billing_company_id, o.agency_company_id].filter(Boolean).map(String)),
+    listChildrenOfOne(storeId, id),
+    listContactsWithCompany(storeId, refIds),
+    workflowRows(storeId, [id]),
   ]);
+  const { lines: lineRows, oms, creatives: creas, photos: photoRows, invoices: invs, bookings } = children;
   const nameBy = new Map(
-    ((cos.data ?? []) as Array<Record<string, unknown>>).map((c) => [String(c.id), String(c.name ?? "")]),
+    cos.map((c) => [String(c.id), String(c.name ?? "")]),
   );
   const kindBy = new Map(
-    ((cos.data ?? []) as Array<Record<string, unknown>>).map((c) => [String(c.id), typeof c.kind === "string" ? c.kind : null]),
+    cos.map((c) => [String(c.id), typeof c.kind === "string" ? c.kind : null]),
   );
   const cityBy = new Map(
-    ((cos.data ?? []) as Array<Record<string, unknown>>).map((c) => [
+    cos.map((c) => [
       String(c.id),
       typeof c.city === "string" && c.city.trim() ? c.city.trim() : null,
     ]),
   );
   const countryBy = new Map(
-    ((cos.data ?? []) as Array<Record<string, unknown>>).map((c) => [
+    cos.map((c) => [
       String(c.id),
       typeof c.country === "string" && c.country.trim() ? c.country.trim() : null,
     ]),
   );
   const addressBy = new Map(
-    ((cos.data ?? []) as Array<Record<string, unknown>>).map((c) => [
+    cos.map((c) => [
       String(c.id),
       typeof c.address === "string" && c.address.trim() ? c.address.trim() : null,
     ]),
@@ -318,26 +268,21 @@ export async function getOrderDetail(storeId: string, id: string): Promise<Order
     return Number.isFinite(n) ? n : null;
   };
   const commissionBy = new Map(
-    ((cos.data ?? []) as Array<Record<string, unknown>>).map((c) => [String(c.id), numOrNull(c.agency_commission_pct)]),
+    cos.map((c) => [String(c.id), numOrNull(c.agency_commission_pct)]),
   );
   const taxBy = new Map(
-    ((cos.data ?? []) as Array<Record<string, unknown>>).map((c) => [
+    cos.map((c) => [
       String(c.id),
       typeof c.tax_id === "string" && c.tax_id.trim() ? c.tax_id.trim() : null,
     ]),
   );
-  for (const [name, res] of [["companies", cos], ["lines", lines], ["oms", oms], ["creatives", creas], ["photos", photos], ["invoices", invs], ["contacts", refs]] as const) {
-    if (res.error) throw new Error(`Order read (${name}): ${res.error.message}`);
-  }
   const contactBy = new Map(
-    (((refs.data ?? []) as Array<Record<string, unknown>>)).map((r) => [String(r.id), toContactRef(r)]),
+    refs.map((r) => [String(r.id), toContactRef(r)]),
   );
   const contactRef = (key: string): OrderContactRef | null => {
     const cid = typeof o[key] === "string" && o[key] ? String(o[key]) : null;
     return cid ? (contactBy.get(cid) ?? null) : null;
   };
-  if (bookings.error) throw new Error(`Order read (bookings): ${bookings.error.message}`);
-  const lineRows = ((lines.data ?? []) as Array<Record<string, unknown>>);
   const screenIds = [...new Set(lineRows.filter((l) => l.screen_id).map((l) => String(l.screen_id)))];
   interface ScreenInfo {
     name: string;
@@ -353,16 +298,11 @@ export async function getOrderDetail(storeId: string, id: string): Promise<Order
   }
   let screenBy = new Map<string, ScreenInfo>();
   if (screenIds.length > 0) {
-    const { data: screens } = await db
-      .from("inv_screens")
-      .select("id,name,external_ref,technology,width_px,height_px,inv_venues!screens_venue_id_fkey(name,district)")
-      .eq("store_id", storeId)
-      .in("id", screenIds);
+    const screens = await listScreensBrief(storeId, { ids: screenIds });
     screenBy = new Map(
-      ((screens ?? []) as Array<Record<string, unknown>>).map((s) => {
-        const v = s.inv_venues as unknown as { name?: unknown; district?: unknown } | null;
-        const venue = typeof v?.name === "string" ? v.name : "";
-        const venueDistrict = typeof v?.district === "string" && v.district.trim() ? v.district.trim() : "";
+      screens.map((s) => {
+        const venue = typeof s.venue_name === "string" ? s.venue_name : "";
+        const venueDistrict = typeof s.district === "string" && s.district.trim() ? s.district.trim() : "";
         const district = venueDistrict || null;
         const w = Number(s.width_px);
         const h = Number(s.height_px);
@@ -387,12 +327,13 @@ export async function getOrderDetail(storeId: string, id: string): Promise<Order
       }),
     );
   }
-  const photoRows = ((photos.data ?? []) as Array<Record<string, unknown>>);
   const advertiserId = typeof o.advertiser_company_id === "string" ? o.advertiser_company_id : o.advertiser_company_id != null ? String(o.advertiser_company_id) : null;
   const billingId = typeof o.billing_company_id === "string" ? o.billing_company_id : o.billing_company_id != null ? String(o.billing_company_id) : null;
   const agencyId = typeof o.agency_company_id === "string" ? o.agency_company_id : o.agency_company_id != null ? String(o.agency_company_id) : null;
   return {
     order: o,
+    workflow,
+    readiness: { authorized: isAuthorized(o, oms), materials: materialsCovered(lineRows, creas) && lineRows.every(l => supplierConfirmed(l, workflow.purchases)), certified: deliveriesCovered(lineRows, workflow.deliveries, photoRows) },
     advertiser_name: advertiserId ? (nameBy.get(advertiserId) ?? null) : null,
     contacts: {
       billing: contactRef("billing_contact_id"),
@@ -426,11 +367,11 @@ export async function getOrderDetail(storeId: string, id: string): Promise<Order
         screen_technology: s?.technology ?? null,
       };
     }),
-    io_agency_orders: (oms.data ?? []) as Array<Record<string, unknown>>,
-    creatives: (creas.data ?? []) as Array<Record<string, unknown>>,
-    bookings_count: bookings.count ?? 0,
+    io_agency_orders: oms,
+    creatives: creas,
+    bookings_count: bookings,
     photos: photoRows,
     photos_count: photoRows.length,
-    invoices: (invs.data ?? []) as Array<Record<string, unknown>>,
+    invoices: invs,
   };
 }

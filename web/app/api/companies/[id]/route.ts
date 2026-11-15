@@ -11,7 +11,7 @@ import { apiLog } from "@/lib/log";
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   try {
-    const loaded = await requireRouteEntity("crm_companies", id, "store_id", "Empresa no encontrada.");
+    const loaded = await requireRouteEntity("crm_company", id, "Empresa no encontrada.");
     if (loaded instanceof Response) return loaded;
     const { storeId, auth } = loaded;
     const detail = await getCrmCompany(storeId, id);

@@ -2,20 +2,23 @@
 // legacy (.data/connections.json) > primera tienda. Sin cookie todavía:
 // la persistencia entre páginas llega en Fase 1 con el selector global.
 //
-// Multiuser por tenant: las lecturas SSR usan service_role (bypassa RLS),
-// así que el aislamiento se enforcea en esta capa filtrando por membresía
-// (`sys_memberships`). `listStores`/`getActiveStore` = sin filtro (workers y
-// contextos sin sesión). `listMyStores`/`getMyActiveStore` = filtrado por el
-// usuario actual vía cliente RLS (cualquier miembro del tenant ve todo el
-// tenant, y solo sus tenants).
+// Multiuser por tenant: las lecturas de datos de dominio usan la identidad de
+// servidor (`app_server`), así que el aislamiento se enforcea en esta capa por
+// membresía (arista `member_of`). La membresía del usuario actual se lee con SU
+// token (`surqlAs`): las PERMISSIONS de SurrealDB solo le devuelven sus filas.
+// `listStores` = sin filtro (workers y contextos sin sesión).
+// `listMyStores`/`getMyActiveStore` = solo las tiendas del usuario actual.
 //
-// Solo server (service_role vía lib/supabase): nunca importar en cliente.
+// Solo server: nunca importar en cliente.
 import "server-only";
 
 // SSOT (issue #8 P2): shop_currency siempre vía normalizeCurrency
 // (nunca `String(x ?? 'PEN')` a mano); resolveTenantStoreAction unifica el
 // resolve de server actions (antes copiado en crm/order/screens-actions).
-import { getSupabase } from "@/lib/supabase";
+import { getAccessToken } from "@/lib/auth";
+import { isDbConfigured, surql, surqlAs } from "@/lib/surreal";
+import { countStores, getStore, listStores as dbListStores, type StoreRow } from "@/lib/stores-db";
+import { isMemberRole } from "@/lib/roles";
 import { normalizeCurrency } from "@/lib/currency";
 import { DEFAULT_SLOTS_PER_SCREEN, normalizeSlotsPerScreen } from "@/lib/store-slots";
 import type { MemberRole } from "@/lib/roles";
@@ -27,9 +30,22 @@ export interface TenantStore {
   name: string | null;
   shop_currency: string;
   shop_country: string | null;
+  /** Zona IANA del tenant (define el día de negocio; la BD guarda UTC). */
+  timezone: string;
   /** Espacios vendibles por pantalla y día (1 slot = 1 espacio).
    *  Fallback cuando la pantalla no tiene slots explícitos. Default 10. */
   default_slots_per_screen: number;
+}
+
+function toTenantStore(r: StoreRow): TenantStore {
+  return {
+    id: r.id,
+    name: r.name,
+    shop_currency: normalizeCurrency(r.shop_currency),
+    shop_country: r.shop_country,
+    timezone: r.timezone,
+    default_slots_per_screen: normalizeSlotsPerScreen(r.default_slots_per_screen),
+  };
 }
 
 /** Lista tiendas ordenadas por creación. Si hay más de 50, valida el ?store=
@@ -38,35 +54,17 @@ export interface TenantStore {
 async function listStores(
   requestedId?: string | null,
 ): Promise<{ stores: TenantStore[]; truncated: boolean; total: number }> {
-  const db = getSupabase();
-  const mapRow = (r: Record<string, unknown>): TenantStore => ({
-    id: String(r.id),
-    name: (r.name as string | null) ?? null,
-    shop_currency: normalizeCurrency(r.shop_currency ?? "PEN"),
-    shop_country: (r.shop_country as string | null) ?? null,
-    default_slots_per_screen: normalizeSlotsPerScreen(r.default_slots_per_screen),
-  });
   if (requestedId) {
-    const { data: one } = await db
-      .from("sys_stores")
-      .select("id,name,shop_currency,shop_country,default_slots_per_screen")
-      .eq("id", requestedId)
-      .maybeSingle();
-    if (one) return { stores: [mapRow(one as Record<string, unknown>)], truncated: false, total: 1 };
+    const one = await getStore(requestedId);
+    if (one) return { stores: [toTenantStore(one)], truncated: false, total: 1 };
   }
-  const { data, error, count } = await db
-    .from("sys_stores")
-    .select("id,name,shop_currency,shop_country,default_slots_per_screen", { count: "exact" })
-    .order("created_at", { ascending: true })
-    .limit(50);
-  if (error) throw new Error(`Stores read: ${error.message}`);
-  const total = count ?? 0;
+  const [rows, total] = await Promise.all([dbListStores({ limit: 50 }), countStores()]);
   const truncated = total > 50;
   if (truncated) {
     const { createLogger } = await import("@/lib/log");
     createLogger("tenant")(`stores truncados a 50/${total}: validar ?store= por ID directo`);
   }
-  return { stores: ((data ?? []) as Array<Record<string, unknown>>).map(mapRow), truncated, total };
+  return { stores: rows.map(toTenantStore), truncated, total };
 }
 
 /** Nombre propio: sys_stores.name. Sin fallback: si está vacío es un
@@ -82,33 +80,31 @@ export function isAnonDevAllowed(): boolean {
   return process.env.ALLOW_ANON_DEV === "1";
 }
 
-/** IDs de tiendas del usuario actual (vía RLS).
+/** Roles del usuario actual por tienda (arista `member_of`, leída con SU token:
+ *  las PERMISSIONS de la tabla ya limitan las filas al propio usuario).
  *  null = anon-dev explícito (`ALLOW_ANON_DEV=1`, no-prod): sin scoping.
- *  [] = sin sesión / sin membresías / error RLS (fail-closed: sin acceso). */
+ *  Map vacío = sin sesión / sin membresías (fail-closed: sin acceso).
+ *  Errores de DB se propagan: un fallo no puede degradar a "sin acceso" mudo
+ *  ni, peor, a "acceso". Los callers que ya manejan error deniegan. */
+export async function getMyStoreRoles(): Promise<Map<string, MemberRole> | null> {
+  if (!isDbConfigured()) return isAnonDevAllowed() ? null : new Map();
+  const token = await getAccessToken();
+  if (!token) return new Map();
+  const rows = await surqlAs<Array<{ store: string; role: unknown }>>(
+    token,
+    "SELECT record::id(out) AS store, role FROM member_of",
+  );
+  const out = new Map<string, MemberRole>();
+  for (const r of rows) {
+    if (isMemberRole(r.role)) out.set(r.store, r.role);
+  }
+  return out;
+}
+
+/** IDs de tiendas del usuario actual. null = anon-dev explícito; [] = sin acceso. */
 export async function getMyStoreIds(): Promise<string[] | null> {
-  let configured = false;
-  try {
-    const { isUserAuthConfigured } = await import("@/lib/supabase-server");
-    configured = isUserAuthConfigured();
-  } catch {
-    return null;
-  }
-  if (!configured) return isAnonDevAllowed() ? null : [];
-  try {
-    const { createServerSupabase } = await import("@/lib/supabase-server");
-    const supabase = await createServerSupabase();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return [];
-    const { data } = await supabase
-      .from("sys_memberships")
-      .select("store_id")
-      .eq("user_id", user.id);
-    return ((data ?? []) as Array<Record<string, unknown>>)
-      .map((r) => String(r.store_id ?? ""))
-      .filter(Boolean);
-  } catch {
-    return [];
-  }
+  const roles = await getMyStoreRoles();
+  return roles === null ? null : [...roles.keys()];
 }
 
 /** ¿El usuario actual pertenece a `storeId`? null = anon-dev explícito (permite).
@@ -117,38 +113,6 @@ export async function requireMyStoreAccess(storeId: string): Promise<boolean | n
   const ids = await getMyStoreIds().catch(() => [] as string[] | null);
   if (ids === null) return null;
   return ids.includes(storeId);
-}
-
-/** Roles del usuario actual por tienda (vía RLS). null = anon-dev explícito. */
-export async function getMyStoreRoles(): Promise<Map<string, MemberRole> | null> {
-  let configured = false;
-  try {
-    const { isUserAuthConfigured } = await import("@/lib/supabase-server");
-    configured = isUserAuthConfigured();
-  } catch {
-    return null;
-  }
-  if (!configured) return isAnonDevAllowed() ? null : new Map();
-  try {
-    const { createServerSupabase } = await import("@/lib/supabase-server");
-    const { isMemberRole } = await import("@/lib/roles");
-    const supabase = await createServerSupabase();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return new Map();
-    const { data } = await supabase
-      .from("sys_memberships")
-      .select("store_id,role")
-      .eq("user_id", user.id);
-    const out = new Map<string, MemberRole>();
-    for (const r of ((data ?? []) as Array<Record<string, unknown>>)) {
-      const role = r.role;
-      if (!isMemberRole(role)) continue;
-      out.set(String(r.store_id ?? ""), role);
-    }
-    return out;
-  } catch {
-    return new Map();
-  }
 }
 
 /** Rol del usuario actual en `storeId`. null = anon-dev o sin membresía (el caller deniega). */
@@ -193,20 +157,18 @@ export async function denyRole(
   return null;
 }
 
-/** Membresía por userId explícito (service_role, bypassa RLS para el check).
+/** Membresía por userId explícito (identidad de servidor, sin token del usuario).
  *  SSOT issue #4: `api/guard.ts` delega aquí — un solo chequeo de membresía,
  *  no dos stacks. */
 export async function hasStoreMembership(userId: string, storeId: string): Promise<boolean> {
   if (!userId || !storeId) return false;
   try {
-    const { data } = await getSupabase()
-      .from("sys_memberships")
-      .select("store_id")
-      .eq("user_id", userId)
-      .eq("store_id", storeId)
-      .limit(1)
-      .maybeSingle();
-    return Boolean(data);
+    const rows = await surql<unknown[]>(
+      `SELECT VALUE id FROM member_of
+       WHERE in = type::record('user', $user) AND out = type::record('sys_store', $store) LIMIT 1`,
+      { user: userId, store: storeId },
+    );
+    return rows.length > 0;
   } catch {
     return false;
   }
@@ -215,42 +177,15 @@ export async function hasStoreMembership(userId: string, storeId: string): Promi
 /** Tiendas visibles para el usuario actual. Fuera de membresía no se lista
  *  nada (el ?store= hostil se ignora aguas abajo en `getMyActiveStore`). */
 export async function listMyStores(requestedId?: string | null): Promise<TenantStore[]> {
-  const ids = await getMyStoreIds().catch(() => null);
+  const ids = await getMyStoreIds();
   if (ids === null) return (await listStores(requestedId)).stores;
   if (ids.length === 0) return [];
-  const db = getSupabase();
   if (requestedId) {
     if (!ids.includes(requestedId)) return listMyStores();
-    const { data: one } = await db
-      .from("sys_stores")
-      .select("id,name,shop_currency,shop_country,default_slots_per_screen")
-      .eq("id", requestedId)
-      .maybeSingle();
-    if (one) {
-      const r = one as Record<string, unknown>;
-      return [{
-        id: String(r.id),
-        name: (r.name as string | null) ?? null,
-        shop_currency: normalizeCurrency(r.shop_currency ?? "PEN"),
-        shop_country: (r.shop_country as string | null) ?? null,
-        default_slots_per_screen: normalizeSlotsPerScreen(r.default_slots_per_screen),
-      }];
-    }
-    return [];
+    const one = await getStore(requestedId);
+    return one ? [toTenantStore(one)] : [];
   }
-  const { data, error } = await db
-    .from("sys_stores")
-    .select("id,name,shop_currency,shop_country,default_slots_per_screen")
-    .in("id", ids)
-    .order("created_at", { ascending: true });
-  if (error) throw new Error(`Stores read: ${error.message}`);
-  return ((data ?? []) as Array<Record<string, unknown>>).map((r) => ({
-    id: String(r.id),
-    name: (r.name as string | null) ?? null,
-    shop_currency: normalizeCurrency(r.shop_currency ?? "PEN"),
-    shop_country: (r.shop_country as string | null) ?? null,
-    default_slots_per_screen: normalizeSlotsPerScreen(r.default_slots_per_screen),
-  }));
+  return (await dbListStores({ ids, limit: ids.length })).map(toTenantStore);
 }
 
 /** `getActiveStore` filtrado por membresía: ?store= fuera del tenant se

@@ -1,4 +1,4 @@
-import { getSupabase } from "@/lib/supabase";
+import { listAccountsOfContacts, listAgencies, listContactsOfCompanies } from "@/lib/crm-store";
 import { toContactRef } from "@/lib/orders-db";
 import { requireRouteEntity } from "@/lib/api/guard";
 import { apiLog } from "@/lib/log";
@@ -11,22 +11,14 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const { id } = await params;
   try {
     const loaded = await requireRouteEntity(
-      "io_orders",
+      "io_order",
       id,
-      "store_id,billing_company_id,advertiser_company_id,agency_company_id",
       "Orden no encontrada.",
     );
     if (loaded instanceof Response) return loaded;
     const { storeId, row: o } = loaded;
-    const db = getSupabase();
     // Agencias del tenant para vincular intermediaria (Opción B) + % default.
-    const { data: agencies } = await db
-      .from("crm_companies")
-      .select("id,name,tax_id,agency_commission_pct")
-      .eq("store_id", storeId)
-      .eq("kind", "agencia")
-      .order("name", { ascending: true })
-      .limit(200);
+    const agencies = await listAgencies(storeId, 200);
     // Contactos de las empresas del caso (facturador + anunciante +
     // intermediaria) para los pickers de POC/firmante/pago/responsable.
     const caseCompanyIds = [...new Set(
@@ -36,44 +28,14 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     let orderContacts: ReturnType<typeof toContactRef>[] = [];
     let contactAccounts: Array<{ contact_id: string; advertiser_company_id: string; advertiser_name: string }> = [];
     if (caseCompanyIds.length > 0) {
-      const { data: contacts } = await db
-        .from("crm_contacts")
-        .select("id,company_id,first_name,last_name,email,phone,job_title,is_primary,crm_companies!contacts_company_id_fkey(name)")
-        .eq("store_id", storeId)
-        .in("company_id", caseCompanyIds)
-        .order("is_primary", { ascending: false })
-        .order("created_at", { ascending: true })
-        .limit(200);
-      orderContacts = ((contacts ?? []) as Array<Record<string, unknown>>).map(toContactRef);
-      const contactIds = orderContacts.map((c) => c.id);
-      if (contactIds.length > 0) {
-        const { data: accs } = await db
-          .from("crm_contact_accounts")
-          .select("contact_id,advertiser_company_id")
-          .eq("store_id", storeId)
-          .in("contact_id", contactIds)
-          .limit(500);
-        const rows = ((accs ?? []) as Array<Record<string, unknown>>).filter(
-          (a) => typeof a.contact_id === "string" && typeof a.advertiser_company_id === "string",
-        );
-        const advIds = [...new Set(rows.map((a) => String(a.advertiser_company_id)))];
-        const nameBy = new Map<string, string>();
-        if (advIds.length > 0) {
-          const { data: advs } = await db.from("crm_companies").select("id,name").eq("store_id", storeId).in("id", advIds);
-          for (const c of ((advs ?? []) as Array<Record<string, unknown>>)) nameBy.set(String(c.id), String(c.name ?? "—"));
-        }
-        contactAccounts = rows.map((a) => ({
-          contact_id: String(a.contact_id),
-          advertiser_company_id: String(a.advertiser_company_id),
-          advertiser_name: nameBy.get(String(a.advertiser_company_id)) ?? "—",
-        }));
-      }
+      orderContacts = (await listContactsOfCompanies(storeId, caseCompanyIds, 200)).map(toContactRef);
+      contactAccounts = await listAccountsOfContacts(storeId, orderContacts.map((c) => c.id));
     }
     return Response.json({
       advertiser_company_id: typeof o.advertiser_company_id === "string" ? o.advertiser_company_id : null,
       order_contacts: orderContacts,
       contact_accounts: contactAccounts,
-      agencies: ((agencies ?? []) as Array<Record<string, unknown>>).map((a) => ({
+      agencies: agencies.map((a) => ({
         id: String(a.id),
         name: String(a.name ?? ""),
         tax_id: typeof a.tax_id === "string" && a.tax_id.trim() ? a.tax_id.trim() : null,

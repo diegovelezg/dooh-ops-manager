@@ -1,4 +1,4 @@
-import { isSupabaseConfigured } from "@/lib/supabase";
+import { isDbConfigured } from "@/lib/surreal";
 import { requireMyStoreAccess, resolveActiveStoreId } from "@/lib/tenant";
 
 /** Datos + estado del gate de una page del dashboard. */
@@ -18,7 +18,7 @@ export async function loadPageData<T>(
   load: (storeId: string) => Promise<T>,
   fallback: T,
 ): Promise<PageData<T>> {
-  const dbReady = isSupabaseConfigured();
+  const dbReady = isDbConfigured();
   const activeStoreId = await resolveActiveStoreId();
   const connected = Boolean(activeStoreId);
   if (!connected || !dbReady) return { data: fallback, connected, dbReady, error: null };

@@ -1,4 +1,4 @@
-import { getSupabase, isSupabaseConfigured } from "@/lib/supabase";
+import { isDbConfigured, surql } from "@/lib/surreal";
 import { createLogger } from "@/lib/log";
 
 const log = createLogger("llm-usage");
@@ -72,7 +72,7 @@ export function parseChatUsage(data: unknown): ParsedUsage | null {
 }
 
 /**
- * Inserta una fila en `ai_llm_usage`. Nunca lanza: sin store_id o sin Supabase
+ * Inserta una fila en `ai_llm_usage`. Nunca lanza: sin store_id o sin base de datos
  * solo advierte (criterio de aceptacion: no perderse en silencio).
  * Fire-and-forget desde los call-sites: `void logLlmUsage(...).catch(()=>{})`.
  */
@@ -82,24 +82,21 @@ export async function logLlmUsage(row: LlmUsageRow): Promise<void> {
       warn(`skip sin store_id process=${row.process} provider=${row.provider}/${row.model}`);
       return;
     }
-    if (!isSupabaseConfigured()) {
-      warn(`skip sin supabase store=${row.storeId} process=${row.process}`);
+    if (!isDbConfigured()) {
+      warn(`skip sin base de datos store=${row.storeId} process=${row.process}`);
       return;
     }
-    const { error } = await getSupabase().from("ai_llm_usage").insert({
-      store_id: row.storeId,
-      process: row.process,
-      provider: row.provider,
-      model: row.model,
-      prompt_tokens: row.promptTokens,
-      completion_tokens: row.completionTokens,
-      total_tokens: row.totalTokens,
-      reasoning_tokens: row.reasoningTokens ?? null,
-      latency_ms: row.latencyMs ?? null,
-      used_fallback: row.usedFallback ?? false,
-      success: row.success ?? true,
-    });
-    if (error) warn(`insert fallo store=${row.storeId} process=${row.process}: ${error.message}`);
+    await surql(
+      `CREATE ai_llm_usage SET store = type::record('sys_store', $store), process = $process, provider = $provider,
+         model = $model, prompt_tokens = $prompt, completion_tokens = $completion, total_tokens = $total,
+         reasoning_tokens = $reasoning ?? NONE, latency_ms = $latency ?? NONE, used_fallback = $fallback, success = $success`,
+      {
+        store: row.storeId, process: row.process, provider: row.provider, model: row.model,
+        prompt: row.promptTokens, completion: row.completionTokens, total: row.totalTokens,
+        reasoning: row.reasoningTokens ?? null, latency: row.latencyMs ?? null,
+        fallback: row.usedFallback ?? false, success: row.success ?? true,
+      },
+    );
   } catch (e) {
     warn(`insert excepcion process=${row.process}: ${e instanceof Error ? e.message : "?"}`);
   }

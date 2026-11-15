@@ -277,7 +277,6 @@ export function NuevaOrdenForm({
   const invalidSlotsRows = rows.filter((r) => slotsOf(r.id) === null);
   const total = rows.reduce((a, r) => a + lineTotalOf(r.id), 0);
 
-  const blockedRows = rows.filter((r) => occupiedOf(r.id).length > 0);
 
   /** Próximo hueco común a todas las elegidas (misma duración). */
   const commonWindow = commonWindowFor(selected);
@@ -285,24 +284,18 @@ export function NuevaOrdenForm({
 
   const missing: string[] = [];
   if (!advertiserId) missing.push("anunciante");
-  if (!company) missing.push("quién firma");
   if (!brand.trim()) missing.push("marca");
-  if (!paymentTerms) missing.push("condición de pago");
-  if (pocId === "") missing.push("contacto contratante");
-  if (signerId === "") missing.push("firmante");
-  if (billingDoc === "") missing.push("documento para facturación");
   if (!agencySelf && agencyId === "") missing.push("empresa intermediaria");
   if (dias === null) missing.push("el periodo");
   if (rows.length === 0) missing.push("al menos una pantalla");
   else if (invalidRows.length > 0) missing.push(`precio de ${invalidRows.length} pantalla${plural(invalidRows.length)}`);
   else if (invalidSlotsRows.length > 0) missing.push(`slots de ${invalidSlotsRows.length} pantalla${plural(invalidSlotsRows.length)} (1–100)`);
-  if (blockedRows.length > 0) missing.push(`${blockedRows.length} pantalla${plural(blockedRows.length)} sin cupo en ese periodo`);
-  const canSubmit = !pending && !checking && missing.length === 0;
+  const canSubmit = !pending && missing.length === 0;
 
   // Defensa cliente: el botón ya se deshabilita con `missing`, pero un
   // submit directo (Enter) también marca borde + toast + foco.
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {
-    if (company && advertiserId) return;
+    if (advertiserId) return;
     e.preventDefault();
     mark([...(!advertiserId ? ["advertiser" as const] : []), ...(!company ? ["company" as const] : [])]);
     toastFormError(
@@ -361,10 +354,11 @@ export function NuevaOrdenForm({
         </div>
       </AppCard>
 
+      <details className="flex flex-col gap-4"><summary className="cursor-pointer text-sm font-medium">Datos administrativos (opcionales al cotizar; obligatorios al confirmar)</summary>
       <AppCard title="Contratante">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="form-field">
-            Contratante *
+            Contratante
             <input type="hidden" name="company_id" value={company} />
             <Select
               value={company}
@@ -384,7 +378,7 @@ export function NuevaOrdenForm({
           </div>
 
           <div className="form-field">
-            Condición de pago *
+            Condición de pago
               <input type="hidden" name="payment_terms_days" value={paymentTerms} />
               <Select
                 value={paymentTerms}
@@ -472,7 +466,7 @@ export function NuevaOrdenForm({
       <AppCard title="Facturación">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="form-field">
-            Documento para facturación *
+            Documento para facturación
             <input type="hidden" name="billing_doc" value={billingDoc} />
             <AppSelect
               value={billingDoc}
@@ -587,6 +581,7 @@ export function NuevaOrdenForm({
         </div>
       </AppCard>
 
+      </details>
       <AppCard title="Periodo">
         <div className="flex flex-col gap-2">
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-[1fr_1fr_0.5fr]">
@@ -628,6 +623,7 @@ export function NuevaOrdenForm({
             </p>
           ) : (
             <ScreenMultiSelect
+              allowUnavailable
               screens={screens}
               selected={selected}
               onToggle={toggleScreen}
@@ -694,7 +690,7 @@ export function NuevaOrdenForm({
         <div>
           <SubmitButton pending={pending} disabled={!canSubmit} title={!canSubmit ? `Falta: ${missing.join(", ")}` : undefined} pendingLabel="Creando…">
             <Plus aria-hidden />
-            <>Crear orden{total > 0 ? <> · <Money amountMinor={Math.round(total * 100)} currency={currency} /></> : null}</>
+            <>Guardar cotización{total > 0 ? <> · <Money amountMinor={Math.round(total * 100)} currency={currency} /></> : null}</>
           </SubmitButton>
         </div>
         {!canSubmit && !pending && (

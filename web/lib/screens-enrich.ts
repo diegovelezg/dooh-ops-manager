@@ -6,7 +6,7 @@
 // (dwell/VAC/score/mix) → tags + rubros + narrativa LLM → embedding.
 // Nunca lanza: si falta token o falla la red, la pantalla queda creada
 // con lo determinista que se pudo calcular.
-import { getSupabase } from "@/lib/supabase";
+import { getScreenWithVenue, patchScreen, patchVenue, setScreenEmbedding } from "@/lib/screens-store";
 import { formatNumber } from "@/lib/format";
 import { chatCompletionParams, getLlmConfig, reasoningBody } from "@/lib/ai/llm-config";
 import { logLlmUsage, parseChatUsage } from "@/lib/ai/usage";
@@ -540,43 +540,27 @@ async function generarEmbeddingGemini(texto: string): Promise<{ values: number[]
 export async function enrichScreen(storeId: string, screenId: string): Promise<void> {
   const markDone = async () => {
     try {
-      await getSupabase().from("inv_screens").update({ enrichment_status: "done" }).eq("store_id", storeId).eq("id", screenId);
+      await patchScreen(storeId, screenId, { enrichment_status: "done" });
     } catch {
       // best-effort
     }
   };
   try {
-    const db = getSupabase();
-    const { data, error } = await db
-      .from("inv_screens")
-      .select("id,name,width_m,height_m,width_px,height_px,impact_day,impressions_day,duration_sec,venue_id")
-      .eq("store_id", storeId)
-      .eq("id", screenId)
-      .maybeSingle();
-    if (error || !data) return;
-    const row = data as Record<string, unknown>;
+    const found = await getScreenWithVenue(storeId, screenId);
+    if (!found) return;
+    const row = found.screen;
+    const venue = found.venue;
     const venueId = typeof row.venue_id === "string" ? row.venue_id : null;
     let lat: number | null = null;
     let lng: number | null = null;
-    let venueCity: string | null = null;
-    let venueDistrict: string | null = null;
-    if (venueId) {
-      const { data: v } = await db
-        .from("inv_venues")
-        .select("latitude,longitude,city,district,region,full_address")
-        .eq("store_id", storeId)
-        .eq("id", venueId)
-        .maybeSingle();
-      const venue = (v ?? null) as Record<string, unknown> | null;
-      const la = Number(venue?.latitude);
-      const ln = Number(venue?.longitude);
-      if (Number.isFinite(la) && Number.isFinite(ln)) {
-        lat = la;
-        lng = ln;
-      }
-      venueCity = typeof venue?.city === "string" ? venue.city : null;
-      venueDistrict = typeof venue?.district === "string" ? venue.district : null;
+    const la = Number(venue?.latitude);
+    const ln = Number(venue?.longitude);
+    if (venue?.latitude != null && venue?.longitude != null && Number.isFinite(la) && Number.isFinite(ln)) {
+      lat = la;
+      lng = ln;
     }
+    const venueCity = typeof venue?.city === "string" ? venue.city : null;
+    const venueDistrict = typeof venue?.district === "string" ? venue.district : null;
     if (lat === null || lng === null) {
       await markDone();
       return;
@@ -719,31 +703,22 @@ export async function enrichScreen(storeId: string, screenId: string): Promise<v
           geo_scores: geo.scoresFull,
         },
       },
-      updated_at: new Date().toISOString(),
     };
     if (!narrativa) delete updatePayload.description;
-    await db.from("inv_screens").update(updatePayload).eq("store_id", storeId).eq("id", screenId);
+    await patchScreen(storeId, screenId, updatePayload);
 
     if (venueId && (!venueCity || !venueDistrict)) {
-      await db
-        .from("inv_venues")
-        .update({
-          district: venueDistrict || geo.admin.district,
-          city: venueCity || geo.admin.city,
-          region: geo.admin.region,
-          full_address: geo.admin.fullFormattedAddress || undefined,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("store_id", storeId)
-        .eq("id", venueId);
+      await patchVenue(storeId, venueId, {
+        district: venueDistrict || geo.admin.district,
+        city: venueCity || geo.admin.city,
+        region: geo.admin.region,
+        ...(geo.admin.fullFormattedAddress ? { full_address: geo.admin.fullFormattedAddress } : {}),
+      });
     }
 
     const emb = await generarEmbeddingGemini(searchText || `${screenName} ${district} ${city} ${tags.join(" ")}`);
     if (emb) {
-      await db.from("inv_screen_embeddings").upsert(
-        { screen_id: screenId, store_id: storeId, embedding: emb.values, model: emb.model },
-        { onConflict: "screen_id" },
-      );
+      await setScreenEmbedding(storeId, screenId, emb.values, emb.model);
     }
   } catch {
     // best-effort: la pantalla ya existe; el drawer muestra lo disponible.

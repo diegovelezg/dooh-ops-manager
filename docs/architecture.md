@@ -157,59 +157,55 @@ Analyst: sesioniza post-envío (moneda tienda), 1 sesión→1ª acción vigente,
 `revenue_attributed` solo con conversión o ventana cerrada, cierra señal;
 `attributionBySlice()` 90d por canal/objetivo/decisión.
 
-## 5. Database Schema (PostgreSQL, Supabase — fuente real)
+## 5. Database Schema (SurrealDB — fuente real)
 
-> Fuente de verdad: `supabase/migrations/*.sql`. El modelo Prisma de abajo
-> es ilustrativo; el DDL real es SQL directo. Pivote DOOH 20261122 + higiene
-> 20261124: se extirpó el motor ecommerce/retención. Nomenclatura con prefijo
-> por dominio (20261125): `sys_` sistema/tenant, `io_` flujo orden→cobro,
-> `inv_` inventario, `crm_` base comercial, `ai_` IA/metering.
+> Fuente de verdad: `surreal/migrations/*.surql` (convenciones, concurrencia y operación en
+> `surreal/README.md`). La base de datos, la sesión (JWT + refresh) y el aislamiento por tenant
+> viven en SurrealDB; antes eran Postgres + PostgREST + GoTrue (Supabase), migrados por fases.
+> Nomenclatura con prefijo por dominio: `sys_` sistema/tenant, `io_` flujo orden→cobro, `inv_`
+> inventario, `crm_` base comercial, `ai_` IA/metering.
 
-Tablas vivas (24 + vista `ai_llm_usage_daily`):
-- `sys_`: `sys_stores, sys_memberships (rol owner|admin|seller|viewer),
-  sys_store_profiles, sys_runs, io_counters`
-- `io_`: `io_orders (+io_lines por pantalla/slot/periodo/tarifa),
-  io_agency_orders (OM/OC), io_creatives (QC+legal), io_photo_checks,
-  io_play_logs (PoP CMS, scaffold), io_invoices (A/R), io_campaigns`
-- `inv_`: `inv_venues, inv_screens, inv_screen_embeddings, inv_loop_templates,
-  inv_slots, inv_bookings`
-  (hard hold con anti-sobreventa `io_check_hold_overlap`)
-- `crm_`: `crm_companies, crm_contacts` (`contacts.company_id` nullable,
-  `SET NULL` al borrar; dedupe por email/phone + `external_ref` único por
-  tenant; `kind` agencia|anunciante|proveedor; `agency_commission_pct`)
-- `ai_`: `ai_domain_cache` (caché global de firmografía por dominio, sin
-  `store_id`), `ai_vertical_profiles` (caché del perfilador),
-  `ai_llm_usage` (+view `ai_llm_usage_daily`, metering write-only)
-- Sin `market_regions`; país/moneda del tenant en
-  `sys_stores.shop_country` + `sys_stores.shop_currency` (single-país).
-- Sin `conversations/messages` (memoria de chat del motor viejo, 0 usos;
-  recrear claveada a empresa si el chat de fichas la necesita) ni
-  `import_runs` (unificado en `sys_runs kind='import'`).
+Tablas vivas:
+- identidad/tenencia: `user` (hash bcrypt), `sys_store`, `member_of` (**arista** user→tienda con rol
+  owner|admin|seller|viewer; evento que impide dejar la tienda sin propietario), `sys_store_profile`
+- operación: `sys_run` (cinta de corridas; slot atómico `fn::run_start`), `sys_insight` +
+  `insight_read` (muro y descartes por usuario), `io_counter` (numeración `fn::mint_io_number`)
+- `io_`: `io_order` (+`io_line` por pantalla/periodo/slots/tarifa), `io_agency_order` (OM/OC),
+  `io_creative` (QC+legal), `io_photo_check`, `io_play_log`, `io_invoice` + `io_invoice_payment`
+  (cobrado = campo calculado), `io_campaign`
+- `inv_`: `inv_venue` (punto geoespacial), `inv_screen` (embedding HNSW 768d), `inv_slot`,
+  `inv_booking` (hard hold con evento anti-solape)
+- `crm_`: `crm_company`, `crm_contact`, y las aristas `crm_company_link` (agencia→anunciante) y
+  `crm_contact_account` (contacto→anunciante que atiende; la agencia es la empresa del contacto)
+- `ai_`: `ai_domain_cache` (global, clave = dominio), `ai_vertical_profile` (global, clave natural),
+  `ai_llm_usage` (metering write-only)
 
-Claves: `sys_stores(name)` propio; `io_orders(store,io_number)`
-único con autonumeración `io_mint_number()` (Año Lima + `io_counters`);
-`io_agency_orders(store,kind,code)` único; `io_invoices(store,number)` único;
-`sys_runs` slot atómico `sys_run_start()` (advisory lock, solo service_role).
-RLS `tenant_isolation` por tabla vía `is_store_member()` (+`my_store_role()`
-para jerarquía en `lib/roles.ts`); `ai_domain_cache` global con lectura
-authenticated. `sys_store_profiles`: config de negocio (arquetipo, ciclo,
-industry); sin columnas del motor (`brain_json, metadata_map, p_band_*`
-extirpadas). Puentes: `io_campaigns.advertiser_company_id +
-primary_contact_id → crm_contacts`, `io_lines.screen_id → inv_screens`,
-`inv_slots.screen_id → inv_screens`, `inv_bookings` cuelga de slot + IO.
+Principios:
+- **Aislamiento:** toda tabla de tenant lleva `store` READONLY y todo enlace entre tablas afirma
+  "misma tienda" (`ASSERT … .store = $this.store`; reemplaza las FK compuestas). `PERMISSIONS` nativas
+  por membresía (`$auth.id IN store<-member_of<-user`). La app usa `app_server` para lecturas de
+  servidor y el token del usuario (`surqlAs`) para lo que debe respetar permisos.
+- **Concurrencia (OCC):** donde dos lecturas disjuntas podrían pasar ambas (capacidad, cobros,
+  numeración, slot de corrida, último propietario) la transacción escribe un registro compartido;
+  la perdedora reintenta. Ver `0006_orders.surql` y ADR 0009.
+- **Búsqueda:** `fn::norm`/`fn::tokens`/`fn::match_all`/`fn::match_score` sobre campos `search`
+  calculados (tildes, subcadenas y typos), sin extensiones.
+- **Claves:** registros con clave = UUID de la app; la app maneja ids como string plano.
+- Claves únicas: `io_order(store, number)`, `io_agency_order(store, kind, code)`,
+  `io_invoice(store, number)`, `crm_company(store, tax_id|domain|external_ref)`.
 
 ## 6. Technology Stack (real)
 
 - **Runtime:** Node 22 + Next.js 16 (App Router, TS). API routes = proxy fino; inteligencia en
   `lib/` + ADK.
 - **UI:** shadcn/ui + TailwindCSS 4 (Hoy, Órdenes, Finanzas, Inventario, Empresas, Contactos, Marcas, Settings, Ayuda).
-- **DB/Auth:** Supabase (Postgres + Auth + Realtime). RLS por `is_store_member`.
+- **DB/Auth:** SurrealDB 4 (datos + sesión JWT/refresh + permisos por tenant). Sin servicios aparte.
 - **Scheduler/Worker:** Fase 2 sin pipeline: `web/worker.ts` no-op (sale 0),
-  sin cron. `sys_runs` es la cinta
-  (import/perfil); slot vía `sys_run_start` (solo corridas vivas, no del
+  sin cron. `sys_run` es la cinta
+  (import/perfil); slot vía `fn::run_start` (solo corridas vivas, no del
   motor extirpado).
 - **Scraping/búsqueda:** SearXNG + Crawlee/cheerio (`procps` en runner).
-- **AI:** `@google/adk@^2.3.0` (`LlmAgent` + Zod tools sobre Supabase). Dev/test vía
+- **AI:** `@google/adk@^2.3.0` (`LlmAgent` + Zod tools sobre SurrealDB). Dev/test vía
   `@google/adk-devtools`. Sin Vercel AI SDK. Modelos en `web/config/llm_models.json`.
 - **Outbound:** email/senders retirados con `sys_secrets` (20261129); sin
   proveedor vigente.
@@ -247,16 +243,9 @@ npm install -D @google/adk-devtools
   al volver al tab) en Finanzas; `BackgroundStatus` refresca al aquietarse una
   corrida viva (import/perfil). ~~Review, Customers, Finanzas-en-juego y
   Products del motor~~: histórico (vistas extirpadas con la retención).
-- **Mejora futura (solo si el polling duele):** migrar a Supabase Realtime
-  (`postgres_changes` → `router.refresh()`). Tablas candidatas vivas, solo las que
-  cambian fuera de la sesión: `sys_runs` (progreso en vivo), `io_orders`,
-  `crm_companies`, `crm_contacts`. ~~`proposed_actions`, `proposed_leads`,
-  `churn_signals`, `customer_predictions`, `background_runs`, `customers`,
-  `orders`, `products`~~: histórico (tablas extirpadas, no suscribir).
-  (1) añadirlas a la publicación `supabase_realtime` (+ `REPLICA IDENTITY FULL`
-  donde importe update/delete); (2) verificar RLS `SELECT` para `authenticated`
-  canal por canal (Realtime la respeta); (3) un hook cliente único con
-  reconexión. Regla: polling hasta que duela.
+- **Mejora futura (solo si el polling duele):** `LIVE SELECT` de SurrealDB (WebSocket) sobre las tablas
+  que cambian fuera de la sesión (`sys_run`, `io_order`, `crm_company`, `crm_contact`) →
+  `router.refresh()`; los permisos de tabla se respetan por conexión. Regla: polling hasta que duela.
 
 ## 8. Metering LLM por tenant (issue #15, implementado base)
 

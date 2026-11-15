@@ -47,10 +47,10 @@ describe("cross-tenant fail-closed (issue #4 P0)", () => {
 
 describe("displayEndOf no-medianoche (issue #5)", () => {
   it("fin medianoche Lima → día anterior", () => {
-    assert.equal(displayEndOf("2026-11-25T00:00:00-05:00"), "2026-11-24");
+    assert.equal(displayEndOf("2026-11-25T00:00:00-05:00", "America/Lima"), "2026-11-24");
   });
   it("fin no-medianoche NO retrocede un día", () => {
-    assert.equal(displayEndOf("2026-11-25T12:00:00-05:00"), "2026-11-25");
+    assert.equal(displayEndOf("2026-11-25T12:00:00-05:00", "America/Lima"), "2026-11-25");
   });
 });
 
@@ -60,11 +60,8 @@ describe("moneda SSOT rechaza ZZZ (issue #6)", () => {
     assert.equal(normalizeCurrency("ZZZ", "PEN"), "PEN");
     assert.equal(isValidCurrency("XXX"), false);
   });
-  it("migración currency_iso incluye ZZZ en denylist", () => {
-    const sql = readFileSync(
-      join(ROOT, "../supabase/migrations/20261208000000_currency_ssot.sql"),
-      "utf8",
-    );
-    assert.match(sql, /ZZZ/, "DOMAIN + pre-chequeo incluyen ZZZ");
+  it("el esquema de la tienda incluye ZZZ en la denylist de moneda", () => {
+    const sql = readFileSync(join(ROOT, "../surreal/migrations/0001_identity_tenancy.surql"), "utf8");
+    assert.match(sql, /'ZZZ'/, "ASSERT de shop_currency incluye ZZZ");
   });
 });

@@ -11,11 +11,14 @@ import { bucketMonthly, computeFinanceKpis } from "@/lib/finance";
 import { invoiceMatchesOrder, isValidCurrency, normalizeCurrency } from "@/lib/currency";
 import { aggregateCobranza, toBillingInvoice } from "@/lib/billing-status";
 import { formatMoney, formatNumber } from "@/lib/format";
-import { getSupabase, isSupabaseConfigured } from "@/lib/supabase";
+import { isDbConfigured } from "@/lib/surreal";
 import { displayStoreName, getMyActiveStore, getMyStoreIds, type TenantStore } from "@/lib/tenant";
 import { connection } from "next/server";
 import { FinanceStrip } from "../finance-strip";
 import { CurrencyFilter } from "./currency-filter";
+import { listCompanies } from "@/lib/crm-store";
+import { selectInvoices, selectLines, selectOrders } from "@/lib/orders-store";
+import { listScreensBrief } from "@/lib/screens-store";
 import {
   DataTable,
   DataTableBody,
@@ -38,7 +41,7 @@ export default async function FinanzasPage({
   searchParams: Promise<{ store?: string; moneda?: string }>;
 }) {
   await connection();
-  if (!isSupabaseConfigured()) {
+  if (!isDbConfigured()) {
     return (
       <div className="page-shell max-w-[1200px]">
         <PageHeader
@@ -103,8 +106,8 @@ export default async function FinanzasPage({
     );
   }
 
-  const db = getSupabase();
   const viewCurrency = normalizeCurrency(active.shop_currency, "PEN");
+  const tz = active.timezone;
 
   interface CurrencyFinance {
     currency: string;
@@ -128,15 +131,8 @@ export default async function FinanzasPage({
   let error: string | null = null;
 
   try {
-    // IOs de la tienda (tope operativo: 500, igual que /orders).
-    const { data: ioData, error: ioErr } = await db
-      .from("io_orders")
-      .select("id,io_number,brand,status,starts_at,advertiser_company_id,billing_company_id,currency")
-      .eq("store_id", active.id)
-      .order("starts_at", { ascending: false })
-      .limit(500);
-    if (ioErr) throw new Error(`ios: ${ioErr.message}`);
-    const ios = (ioData ?? []) as Array<Record<string, unknown>>;
+    // IOs vigentes de la tienda (sin canceladas), sin tope: totales exactos.
+    const ios = await selectOrders(active.id, { live: true, order: "starts_desc" });
     const ioIds = ios.map((r) => String(r.id));
     const brandByIo = new Map(ios.map((r) => [String(r.id), String(r.brand ?? "").trim() || "Sin marca"]));
     const advIdByIo = new Map(ios.map((r) => [String(r.id), r.advertiser_company_id ? String(r.advertiser_company_id) : null]));
@@ -144,38 +140,11 @@ export default async function FinanzasPage({
       ios.map((r) => [String(r.id), normalizeCurrency(r.currency, viewCurrency)]),
     );
 
-    // Líneas: contratado. Paginado simple (una tienda DOOH rara vez pasa 5k).
-    const lineRows: Array<Record<string, unknown>> = [];
-    if (ioIds.length > 0) {
-      for (let off = 0; ; off += 1000) {
-        const { data: lpage, error: lErr } = await db
-          .from("io_lines")
-          .select("io_id,screen_id,rate_minor,starts_at")
-          .eq("store_id", active.id)
-          .in("io_id", ioIds)
-          .range(off, off + 999);
-        if (lErr) throw new Error(`lineas: ${lErr.message}`);
-        const rows = (lpage ?? []) as Array<Record<string, unknown>>;
-        lineRows.push(...rows);
-        if (rows.length < 1000) break;
-        if (lineRows.length >= 20000) break;
-      }
-    }
+    // Líneas: contratado.
+    const lineRows: Array<Record<string, unknown>> = await selectLines(active.id, ioIds);
 
-    // Facturas de la tienda.
-    const invRows: Array<Record<string, unknown>> = [];
-    for (let off = 0; ; off += 1000) {
-      const { data: ipage, error: iErr } = await db
-        .from("io_invoices")
-        .select("io_id,amount_minor,currency,status,issue_date,due_date,payments:io_invoice_payments!io_invoice_payments_same_store_fk(*)")
-        .eq("store_id", active.id)
-        .range(off, off + 999);
-      if (iErr) throw new Error(`facturas: ${iErr.message}`);
-      const rows = (ipage ?? []) as Array<Record<string, unknown>>;
-      invRows.push(...rows);
-      if (rows.length < 1000) break;
-      if (invRows.length >= 20000) break;
-    }
+    // Facturas de la tienda (con sus cobros).
+    const invRows: Array<Record<string, unknown>> = await selectInvoices(active.id);
 
     // Monedas presentes: solo valores explícitos y válidos (nunca sumar
     // mixto y nunca heredar: una factura sin moneda no se asigna a la de su
@@ -204,12 +173,7 @@ export default async function FinanzasPage({
     {
       const sids = [...new Set(lineRows.map((l) => String(l.screen_id ?? "")).filter(Boolean))];
       if (sids.length > 0) {
-        const { data: scData } = await db
-          .from("inv_screens")
-          .select("id,name,external_ref")
-          .eq("store_id", active.id)
-          .in("id", sids);
-        for (const s of ((scData ?? []) as Array<Record<string, unknown>>)) {
+        for (const s of await listScreensBrief(active.id, { ids: sids })) {
           const ref = String(s.external_ref ?? "").trim();
           const label = String(s.name ?? "").trim() || ref || "Sin nombre";
           screenNameByAll.set(String(s.id), ref ? `${label} (${ref})` : label);
@@ -217,12 +181,7 @@ export default async function FinanzasPage({
       }
       const aids = [...new Set([...advIdByIo.values()].filter(Boolean) as string[])];
       if (aids.length > 0) {
-        const { data: coData } = await db
-          .from("crm_companies")
-          .select("id,name")
-          .eq("store_id", active.id)
-          .in("id", aids);
-        for (const c of ((coData ?? []) as Array<Record<string, unknown>>)) {
+        for (const c of await listCompanies(active.id, aids)) {
           advNameByAll.set(String(c.id), String(c.name ?? "") || "Sin nombre");
         }
       }
@@ -233,18 +192,19 @@ export default async function FinanzasPage({
       const finOrders = lineRows
         .filter((r) => currencyByIo.get(String(r.io_id ?? "")) === cur)
         .map((r) => ({
+          order_id: String(r.io_id),
           total_amount: Number(r.rate_minor ?? 0),
           currency: cur,
           placed_at: (r.starts_at as string | null) ?? null,
         }));
-      const buckets = bucketMonthly(finOrders, cur);
-      const kpis = computeFinanceKpis(finOrders, cur);
+      const buckets = bucketMonthly(finOrders, cur, tz);
+      const kpis = computeFinanceKpis(finOrders, cur, tz);
 
       // Cobro en esta moneda: la factura cuenta solo si su moneda
       // explícita coincide (invoiceMatchesOrder). Sin herencia silenciosa.
       const currencyInvoices = invRows.filter((v) => invoiceMatchesOrder(v.currency, cur)).map(toBillingInvoice);
-      const { invoicedMinor, paidMinor, pendingMinor, overdueMinor } = aggregateCobranza(currencyInvoices, nowMs);
-      const overdueCount = currencyInvoices.filter((v) => aggregateCobranza([v], nowMs).overdueMinor > 0).length;
+      const { invoicedMinor, paidMinor, pendingMinor, overdueMinor } = aggregateCobranza(currencyInvoices, nowMs, tz);
+      const overdueCount = currencyInvoices.filter((v) => aggregateCobranza([v], nowMs, tz).overdueMinor > 0).length;
 
       // Tops por contratado (solo esta moneda).
       const grossByBrand = new Map<string, { gross: number; ios: Set<string> }>();
@@ -461,7 +421,7 @@ export default async function FinanzasPage({
                     <DataTableHeader>
                       <DataTableTh>Mes</DataTableTh>
                       <DataTableTh numeric>Contratado</DataTableTh>
-                      <DataTableTh numeric>Líneas</DataTableTh>
+                      <DataTableTh numeric>Órdenes</DataTableTh>
                       <DataTableTh numeric>Ticket</DataTableTh>
                     </DataTableHeader>
                     <DataTableBody className="tabular-nums">

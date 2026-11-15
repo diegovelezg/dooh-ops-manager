@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useRef, useTransition } from "react";
 import { useSearchParams } from "next/navigation";
 import { LogOut, Store } from "lucide-react";
 import {
@@ -13,8 +13,7 @@ import {
 import { AttributeBadge } from "@/components/badges";
 import { signOutAction } from "@/lib/auth-actions";
 import { toast } from "@/components/ui/toast";
-import { createBrowserSupabase } from "@/lib/supabase-browser";
-import { MEMBER_ROLE_LABELS, isMemberRole, type MemberRole } from "@/lib/roles";
+import { MEMBER_ROLE_LABELS, type MemberRole } from "@/lib/roles";
 
 /** displayStoreName puro (lib/tenant es server-only: no importar en cliente). */
 function displayTenantName(s: { name?: string | null }): string {
@@ -29,12 +28,12 @@ export interface UserMenuStore {
 /**
  * Avatar del merchant + dropdown de cuenta.
  * - `initialEmail` viene del servidor (layout dashboard): pinta email + avatar
- *   en el primer paint sin esperar al fetch cliente.
+ *   en el primer paint.
  * - `stores` + `initialRoles` vienen del servidor: resuelven tenant activo
  *   (?store= válido > primero) y rol del user sin fetch extra.
- * - Se suscribe a cambios de sesión para no quedarse stale tras login/logout;
- *   refresca el rol vía `sys_memberships` (RLS self-read).
- * - Silencioso (skeleton → nada) si no hay sesión.
+ * - Login/logout navegan (redirect) y el layout se re-renderiza: no hay estado
+ *   de sesión en el cliente que sincronizar.
+ * - Silencioso si no hay sesión.
  */
 export function UserMenu({
   initialEmail = null,
@@ -45,71 +44,14 @@ export function UserMenu({
   stores?: UserMenuStore[];
   initialRoles?: Record<string, MemberRole>;
 }) {
-  const [email, setEmail] = useState<string | null>(initialEmail);
-  const [roles, setRoles] = useState<Record<string, MemberRole>>(initialRoles);
-  const [loaded, setLoaded] = useState(initialEmail != null);
+  const email = initialEmail;
+  const roles = initialRoles;
   const [pending, startSignOut] = useTransition();
   // Doble-submit: la transición cubre el await, pero un segundo clic en la
   // ventana previa redirigiría dos veces; el ref lo frena en seco.
   const signingOutRef = useRef(false);
   const sp = useSearchParams();
 
-  useEffect(() => {
-    let alive = true;
-    let unsubscribe: (() => void) | null = null;
-    const refreshRoles = async (userId: string | null) => {
-      if (!alive || !userId) return;
-      try {
-        const client = createBrowserSupabase();
-        const { data } = await client
-          .from("sys_memberships")
-          .select("store_id,role")
-          .eq("user_id", userId);
-        if (!alive || !data) return;
-        const next: Record<string, MemberRole> = {};
-        for (const r of data as Array<Record<string, unknown>>) {
-          if (isMemberRole(r.role)) next[String(r.store_id ?? "")] = r.role;
-        }
-        setRoles(next);
-      } catch {
-        // RLS sin acceso o sin tabla: se conserva el rol del servidor
-      }
-    };
-    (async () => {
-      try {
-        const client = createBrowserSupabase();
-        const { data } = await client.auth.getUser();
-        if (alive) {
-          setEmail(data.user?.email ?? null);
-          setLoaded(true);
-        }
-        void refreshRoles(data.user?.id ?? null);
-        const { data: listener } = client.auth.onAuthStateChange((_event, session) => {
-          if (alive) {
-            setEmail(session?.user?.email ?? null);
-            setLoaded(true);
-          }
-          void refreshRoles(session?.user?.id ?? null);
-        });
-        unsubscribe = () => listener.subscription.unsubscribe();
-      } catch {
-        if (alive) setLoaded(true);
-      }
-    })();
-    return () => {
-      alive = false;
-      unsubscribe?.();
-    };
-  }, []);
-
-  if (!loaded) {
-    return (
-      <span
-        aria-hidden
-        className="size-8 animate-pulse rounded-full bg-muted"
-      />
-    );
-  }
   if (!email) return null;
 
   const initial = (email.trim()[0] ?? "?").toUpperCase();

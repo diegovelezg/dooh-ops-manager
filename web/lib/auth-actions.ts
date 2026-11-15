@@ -1,7 +1,8 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { createServerSupabase } from "@/lib/supabase-server";
+import { signInWithPassword, signOut } from "@/lib/auth";
+import { surqlAs } from "@/lib/surreal";
 import { createLogger } from "@/lib/log";
 
 const log = createLogger("auth");
@@ -11,7 +12,7 @@ export interface AuthState {
   message: string;
 }
 
-/** Login solo con email+password (sin signup público: el merchant lo crea Studio/CLI). */
+/** Login solo con email+password (sin signup público: los usuarios se crean con scripts/db-user.ts). */
 export async function signInAction(_prev: AuthState | null, formData: FormData): Promise<AuthState> {
   const email = String(formData.get("email") ?? "").trim();
   const password = String(formData.get("password") ?? "");
@@ -22,37 +23,24 @@ export async function signInAction(_prev: AuthState | null, formData: FormData):
   if (!checkRateLimit(`login:${email.toLowerCase()}`, 10, 60_000)) {
     return { ok: false, message: "Demasiados intentos. Espera un momento." };
   }
-  let supabase;
-  try {
-    supabase = await createServerSupabase();
-  } catch (e) {
-    return { ok: false, message: e instanceof Error ? e.message : "Supabase no configurado." };
-  }
-  const { error } = await supabase.auth.signInWithPassword({ email, password });
-  if (error) {
-    // Mensaje genérico (no expone detalle del proveedor: evita enumeración).
-    log.warn("signIn fail", { status: error.status });
+  const tokens = await signInWithPassword(email, password);
+  if (!tokens) {
+    // Mensaje genérico (no expone detalle): evita enumeración de usuarios.
+    log.warn("signIn fail");
     return { ok: false, message: "Credenciales inválidas." };
   }
-  const { data, error: membersError } = await supabase
-    .from("sys_memberships")
-    .select("store_id")
-    .order("created_at", { ascending: true });
-  if (membersError) {
-    log.warn("signIn memberships fail", { error: membersError.message });
-    redirect(safeNext(next) ?? "/");
-  }
-  const memberIds = ((data ?? []) as Array<{ store_id: unknown }>)
-    .map((r) => String(r.store_id ?? ""))
-    .filter(Boolean);
+  const rows = await surqlAs<Array<{ store: string }>>(
+    tokens.access,
+    "SELECT record::id(out) AS store FROM member_of ORDER BY created_at ASC",
+  );
+  const memberIds = rows.map((r) => r.store).filter(Boolean);
   const storeId = memberIds[0] as string | undefined;
   const dest = pickSafeNext(next, memberIds) ?? (storeId ? `/?store=${storeId}` : "/");
   redirect(dest);
 }
 
 export async function signOutAction(): Promise<void> {
-  const supabase = await createServerSupabase();
-  await supabase.auth.signOut();
+  await signOut();
   redirect("/login");
 }
 

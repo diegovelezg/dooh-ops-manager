@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getSupabase } from "@/lib/supabase";
+import { dismissInsight, insightStore, latestInsightIds, readInsightIds } from "@/lib/insights-store";
 import { listWallInsights, type WallInsight } from "@/lib/insights";
 import { createLogger } from "@/lib/log";
 
@@ -21,11 +21,10 @@ export async function getWallAction(storeIdArg?: string): Promise<WallInsight[]>
   let userId: string | null = null;
   let email: string | null = null;
   try {
-    const { createServerSupabase } = await import("@/lib/supabase-server");
-    const supabase = await createServerSupabase();
-    const { data } = await supabase.auth.getUser();
-    userId = data.user?.id ?? null;
-    email = data.user?.email ?? null;
+    const { getSessionUser } = await import("@/lib/auth");
+    const sessionUser = await getSessionUser();
+    userId = sessionUser?.id ?? null;
+    email = sessionUser?.email ?? null;
   } catch {
     userId = null;
   }
@@ -40,29 +39,16 @@ export async function getUnreadWallCountAction(): Promise<number> {
     const { resolveTenantStoreAction } = await import("@/lib/tenant");
     const t = await resolveTenantStoreAction().catch(() => ({ error: "Sin tienda." }) as const);
     if ("error" in t) return 0;
-    const { createServerSupabase } = await import("@/lib/supabase-server");
-    const supabase = await createServerSupabase();
-    const { data } = await supabase.auth.getUser();
-    const userId = data.user?.id ?? null;
-    const db = getSupabase();
-    const { data: rows } = await db
-      .from("sys_insights")
-      .select("id")
-      .eq("store_id", t.storeId)
-      .order("created_at", { ascending: false })
-      .limit(20);
-    const ids = ((rows ?? []) as Array<Record<string, unknown>>).map((r) => String(r.id));
+    const { getSessionUser } = await import("@/lib/auth");
+    const sessionUser = await getSessionUser();
+    const userId = sessionUser?.id ?? null;
+    const ids = await latestInsightIds(t.storeId, 20);
     if (ids.length === 0) return 0;
     // Sin usuario (sesión no resuelta): todo cuenta como sin leer, no hay
     // estado de dismiss per-user con que comparar. Antes devolvía 0 y el
     // badge del icono Inbox nunca aparecía.
     if (!userId) return ids.length;
-    const { data: reads } = await db
-      .from("sys_insight_reads")
-      .select("insight_id")
-      .in("insight_id", ids)
-      .eq("user_id", userId);
-    const readIds = new Set(((reads ?? []) as Array<Record<string, unknown>>).map((r) => String(r.insight_id)));
+    const readIds = await readInsightIds(userId, ids);
     return ids.filter((id) => !readIds.has(id)).length;
   } catch {
     return 0;
@@ -72,22 +58,16 @@ export async function getUnreadWallCountAction(): Promise<number> {
 /** Dismiss per-user (sys_insight_reads): nunca borra el post global. */export async function dismissInsightAction(insightId: string): Promise<{ ok: boolean; message: string }> {
   if (!insightId) return { ok: false, message: "Falta insight." };
   try {
-    const { createServerSupabase } = await import("@/lib/supabase-server");
-    const supabase = await createServerSupabase();
-    const { data } = await supabase.auth.getUser();
-    if (!data.user) return { ok: false, message: "No autenticado." };
-    const db = getSupabase();
-    const { data: row } = await db.from("sys_insights").select("store_id").eq("id", insightId).maybeSingle();
-    const storeId = String((row as Record<string, unknown> | null)?.store_id ?? "");
+    const { getSessionUser } = await import("@/lib/auth");
+    const sessionUser = await getSessionUser();
+    if (!sessionUser) return { ok: false, message: "No autenticado." };
+    const storeId = (await insightStore(insightId)) ?? "";
     if (!storeId) return { ok: false, message: "Insight no encontrado." };
     const { requireMyStoreAccess } = await import("@/lib/tenant");
     if ((await requireMyStoreAccess(storeId).catch(() => false)) === false) {
       return { ok: false, message: "Sin acceso a esta tienda." };
     }
-    const { error } = await db
-      .from("sys_insight_reads")
-      .upsert({ insight_id: insightId, user_id: data.user.id }, { onConflict: "insight_id,user_id" });
-    if (error) { log.warn("getUnreadWallCountAction", { fail: `DB write: ${error.message}` }); return { ok: false, message: `DB write: ${error.message}` }; }
+    await dismissInsight(insightId, sessionUser.id);
     revalidatePath("/");
     revalidatePath("/inbox");
     return { ok: true, message: "Descartado." };
@@ -103,19 +83,16 @@ async function guardInsight(
 ): Promise<{ storeId: string; userId: string; email: string | null } | { error: string }> {
   if (!insightId) return { error: "Falta insight." };
   try {
-    const { createServerSupabase } = await import("@/lib/supabase-server");
-    const supabase = await createServerSupabase();
-    const { data } = await supabase.auth.getUser();
-    if (!data.user) return { error: "No autenticado." };
-    const db = getSupabase();
-    const { data: row } = await db.from("sys_insights").select("store_id").eq("id", insightId).maybeSingle();
-    const storeId = String((row as Record<string, unknown> | null)?.store_id ?? "");
+    const { getSessionUser } = await import("@/lib/auth");
+    const sessionUser = await getSessionUser();
+    if (!sessionUser) return { error: "No autenticado." };
+    const storeId = (await insightStore(insightId)) ?? "";
     if (!storeId) return { error: "Aviso no encontrado." };
     const { requireMyStoreAccess } = await import("@/lib/tenant");
     if ((await requireMyStoreAccess(storeId).catch(() => false)) === false) {
       return { error: "Sin acceso a esta tienda." };
     }
-    return { storeId, userId: data.user.id, email: data.user.email ?? null };
+    return { storeId, userId: sessionUser.id, email: sessionUser.email };
   } catch (e) {
     log.error("getUnreadWallCountAction", { error: e instanceof Error ? e.message : String(e) });
     return { error: e instanceof Error ? e.message : "Error." };

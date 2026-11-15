@@ -1,6 +1,6 @@
 // Throttle en memoria por clave (user/store/ruta) contra abuso y quema de
 // cuota LLM. Sin `import "server-only"` a propósito: los tests `tsx --test`
-// corren en node (igual que lib/supabase.ts). Solo usar desde server
+// corren en node (igual que lib/surreal.ts). Solo usar desde server
 // (actions / route handlers); nunca importar en cliente.
 // Ventana fija con Map global (sobrevive HMR); en serverless multi-instancia
 // es mitigación best-effort, no límite exacto distribuido.

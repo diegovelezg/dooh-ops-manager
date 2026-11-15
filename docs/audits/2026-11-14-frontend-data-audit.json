@@ -1,0 +1,1434 @@
+{
+  "audited_at": "2026-11-14T18:15:08.419690-05:00",
+  "environment": "local; SurrealDB namespace dooh/database ops; Next.js localhost:3000",
+  "live_read_checks": [
+    {
+      "label": "screens list",
+      "ok": true,
+      "rows": 100
+    },
+    {
+      "label": "screen filter options",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screens sort name",
+      "ok": true,
+      "rows": 20
+    },
+    {
+      "label": "screens sort supplier",
+      "ok": true,
+      "rows": 20
+    },
+    {
+      "label": "screens sort city",
+      "ok": true,
+      "rows": 20
+    },
+    {
+      "label": "screens sort impact",
+      "ok": true,
+      "rows": 20
+    },
+    {
+      "label": "screens sort price",
+      "ok": true,
+      "rows": 20
+    },
+    {
+      "label": "screen detail e1f8f7b1-d536-46ed-8f2a-f1b2bcfa33e7",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail a334ca04-562d-486e-8d3b-47879ed2f99a",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 08baecb4-955d-425a-9dc4-c304b7b4ff34",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 1e4be85c-5248-4f39-9b47-ed7e73026df5",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 3ac49230-e308-4a03-b41f-13da09a7dd78",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 3a283c2a-b7fb-45b6-bd7c-4bad14f0b518",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail bd2960ea-477b-43b9-a944-734179956c55",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail e9050cf3-6a57-4d94-97e6-b3f137c8d3da",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail abf3720d-8abb-4741-8cc2-44dd97bc5bbf",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 8fbc4cf9-1a1c-4b48-ad49-b12180f1aee7",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail fbd85e11-6feb-465f-89f9-5fe8329c7ea4",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail b5a549be-6b5f-4b9b-8b72-8981de4e9abc",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail ec90a8d2-58bd-4252-a379-e835c329ad42",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 46b60c70-fb3a-49ea-8cbd-c70bd9eb3c2f",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 77f55937-fd56-4787-8b94-5b7510b35936",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 750e6c8c-8e4a-415a-b1e5-9abaedf0b3de",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 05bda273-60ec-415a-8057-8b43bfef1b71",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 69e2f38e-3c47-483f-9c59-6acca3aab4da",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 2501b377-76c2-468d-83de-39af28a7d0a6",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 951abedd-03f7-4191-860d-6561339ece20",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail e9866dc7-c6d2-4054-8f02-cfce8b80a739",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail cb74b5d5-573a-4a24-ae5e-1d7894068146",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 61eca118-cb98-4c1b-9137-6a4e2e7c2d77",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail f7edd9ac-cc35-4873-aa69-654a095ef27f",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 5d75bd10-3994-4116-82b8-c67af542b5a2",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 3ba5d03b-df33-4ddd-9f2e-7cfea760b4f0",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 31fe8ca5-bfb3-4025-a40d-334c5eb4bfa6",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 6d284911-e1c3-44b1-ab9f-8232a7425708",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 027114db-45ca-4b0b-88ed-511afd41e81e",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 397d9342-ef3e-4fd0-a005-b9bf0bba08b1",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 07481846-867b-4992-8ecc-faf94f32f8c2",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 4b6d9723-d6ee-4aed-a11b-252953178d9c",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail c915b61e-5d91-45d5-8989-3926ead4000d",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail cabbf725-0bac-48ad-b034-3a1f28614d58",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail a3f0e127-552f-4c04-bd67-e69ae04c775c",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail f7ec9559-2fb1-40e0-8337-7b789f4113a8",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 1d8bd5ca-f89f-4448-b8b1-de8e61b87796",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail b2d1c71a-6e7e-41f2-94b9-f4f873a73cec",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 6e16ae80-849c-4227-9cd7-b73d983d1d29",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail f79faf1b-2786-4c0c-868f-217a6b6f8698",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 5bfb5ade-a392-499f-be54-388bbeac4326",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 41c84561-d151-46ac-8e60-dc87237e24cb",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 4dc84e59-192c-41fa-b1db-d187fc7f8dd1",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 5218e9ea-7945-46db-b866-6233f98e5d59",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 831003ae-5b32-447c-aa5f-011e4494eef2",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 4696c546-15ad-4e34-8e25-6dfe0f2bb4c8",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 8455dede-0775-4d17-891e-5fa04961921a",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 1c59432c-8f94-423f-9c91-0edf10a5efa7",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 8f278561-b428-476a-ac94-14308144e903",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 238ca39c-cb19-4972-800d-8f75983ecb2d",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 60829d58-9698-4f9e-934a-b43274f2c908",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 2b003c7d-de22-4481-8c8f-b4099a9ae700",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail ea02ad21-8c44-48b6-8bfa-5e5cf7e3f5ef",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 53fe1b09-7ede-4d81-91b1-fce4cdec9963",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail d6722e51-129b-444b-b2d4-a84eaa357e06",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 0c146894-5a94-464a-972e-c0538473f12b",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 135b302d-5aaf-4d65-8c30-3307f5caa5ab",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail f22b5792-00a1-4ccb-a8b3-b7de0df9c120",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 2d96f08d-5938-47b5-845f-972f10ea6854",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 0b66e062-8507-47c8-ac06-72a1c09e1d1c",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail f3d94b7d-abb3-43b5-aa8d-35af0efc9714",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail f74bfe3f-c785-4821-baf4-ca8768ca063c",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 33b2c606-02e8-44b8-b54f-ad1ae1446cdb",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 9a616a90-abb3-4ed2-a6ce-d3a0fcc0bfd9",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail cab3d68d-1ea4-4a1c-b41a-3ca7ca45e3d1",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 300082c1-9b7e-49a8-81bf-d919f6fb984a",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail b757c3a9-04b3-400d-a063-693d8d39eb55",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 05d1b602-26b7-4266-ba72-5e1572d16271",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 386fe574-d127-4a98-b7cb-1ba0abe750d3",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 798793c7-8661-47c9-bfc7-252ea73554b5",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 78e99a66-8b42-46fd-870e-71dcf664e79b",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 7fd07a9a-c8a0-4823-81cb-e05fbccdf203",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 56cbeb8b-3ac9-4fb3-a5dc-a4262f8770fe",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 31c9cd88-dd4a-40a2-8176-8f3d0450e1ee",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 75c274ce-a192-4d2e-8d15-3eb3f2e0de92",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail bddeb816-2063-4439-aa19-77ad65f9a276",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail c78ae46c-d82e-4f77-bebf-99a81eb92ab6",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail dd944653-9284-4544-a999-245bc496e980",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 3e8b6b30-3993-493a-866d-e9afe4a9604f",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 0415ccbd-a8be-4439-8fbb-bff21a763fb5",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 0e7931ee-1506-4c59-b8ef-f99001c6a335",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 76664246-9cba-4432-aaf4-2ccbeade0af1",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 3590bf45-ed33-4243-97dd-680f0299480b",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 934783fa-7113-4ad4-b7fe-6c871bd0ea12",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail a68ea739-57b2-4334-a772-2937547ffeb3",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail c2ae2e62-9cbc-4a12-ba1f-ddae3fbda4ee",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 031d4652-76a7-4902-9d33-a6e1e2eb69d2",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 2b73d91e-7969-4b8c-8eb0-b070089443fa",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 7e36bd5f-ca30-4482-8867-012c4483bf7a",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail e7c784e8-6cb3-4dad-bb5e-d5c3f0e1d866",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 18d8e0df-5f7b-47ba-bb12-436a712c2c83",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 641dfb8b-9c0c-4cf2-8a89-9d2f2e5a8875",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail cb14f8af-93c1-4002-846b-4585a9f2924c",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 8a7d619d-4f0d-4ada-b0ba-b5c1a729a734",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 1102cf73-9893-4a5c-9ccb-6c21b1384219",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 198b6b8e-8d7e-4009-80ee-b1d96be060be",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail aa6eacac-1115-4087-bad7-ba50837fcf22",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 2a953156-c9e2-4b24-a914-2e116021b599",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 744ba579-d59d-476f-87e2-85ddf60bc7e2",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 1af2fb39-5b09-4c4a-bb61-90ee875c717d",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 041b3bbb-61a7-4188-837e-851f0478540f",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 4fd037c6-a719-45ad-8031-46b2327ef146",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 6b042993-2b32-4fcf-90c6-1210cd7a3ead",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 36d7a340-6965-4897-9da4-8bf783f03f86",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail b71baee5-0b7c-48ac-82bc-d85ad9668335",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail e90d1dd8-bd31-468f-b814-abdd54dbbf0d",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 5c4daaa3-a3ac-48a0-a722-eb95137f4da9",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 053df721-0db5-4982-8ffe-10b7365bbfc6",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail b32511c9-a4cd-4b22-a054-0c1d8b1f785c",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 2637beca-3110-4479-a1b5-af9d51993173",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail b0999745-865a-4425-8104-a7afffdf67cc",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 8c3c6536-6c96-4398-94d6-5fcb2ce1c131",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail a4bae86d-a13d-4be1-8825-7ac0ada4ef18",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 3dbd680a-c3d0-4e33-9cf7-07480ffa84e9",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail c01cd1ff-b360-49e9-b673-aaf00b591731",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail c40770d1-668c-4303-836d-17df051ca860",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 22d7aaeb-2330-44e2-98be-a471558df41a",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail f1694894-a00f-4902-a3da-71c26733e390",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail a72ccf79-80e9-420b-91bf-5f76b6c5ffae",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 49375523-8b67-4de8-ac17-dd1ec40acfbe",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail f573ed31-78f7-437e-bc4c-6f7da2bae761",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 8b383fcb-db22-4901-a528-c22f2270d495",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 3703ef49-4b3c-4bdd-ba34-d6f09ec131e0",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail c6d6e4f6-0174-453f-8424-7947bb7bb1d9",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 53cc4a21-ef62-45a9-8bd8-94ba27cd4204",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 34aca7f4-11a1-4b8b-87cc-472924f1b24b",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 01315395-aaf4-454b-a057-51a11444e52e",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 02d68c16-c575-4212-9329-78cd4eb9da52",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail c9f35db4-80c2-4d63-a79c-262a7ff843d9",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 9859eb58-b347-4bf0-a669-3cf1ee46a0e4",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail d92e9302-8ec1-489b-b895-31d4519d3a8a",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 426bd2d5-5daf-44d8-bac3-21c1000d47c4",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 08f9f1f7-62fb-415a-83d0-da8ce3e3965e",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 02a4eebe-5807-45ce-9768-bb2b84c9ddfd",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 9a2ea3e3-a42e-4ee6-92c6-55b09f390917",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 40e0d700-49e0-4e69-adfc-9229188b451c",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 3d97e6ca-eb88-4a0c-bcaa-8d5c5b2481c4",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail ace19d35-2a8b-4468-b364-5e6912da0251",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 85dbd9ca-e036-445b-9b88-df95abf867c4",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail d359310e-b209-4f44-a560-47bad133d021",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 6c6e5aae-a05e-42a9-9d52-b050a5545860",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail be7d13a9-951d-4a63-ac72-26f33250be66",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 698680b0-901b-41dc-8acd-6acf23a4c088",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 8e5e4362-e383-428d-a990-84fd857429d0",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 4505d389-0609-4818-b1a4-5434379cc290",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail d2420770-b86e-4122-af8c-a2fdd3f76a0e",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 8546d419-c067-4ffc-8aea-07033e7bde7b",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail e6157511-0434-4f55-8eeb-ce760a0f1911",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail d0249198-e57d-4697-8221-13561cb3cd0c",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 0a4b2f82-f04f-4b3b-a625-96860c2e1c6a",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 0392b07f-58d8-4b26-86d3-8167fef79c3f",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 4056a218-b031-4e5b-afa6-b6936134c9d4",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 5c93332b-154a-4c77-a0d9-3f282b1719bc",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 430738ec-6d31-444c-b4ba-23eb0f0a3567",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 510ce282-8c7c-41eb-bc3e-76b6308e3c6a",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 34716478-51bf-4039-b1cb-84adb50454ff",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail ede23a02-b459-4133-953f-3e4e919aaf60",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail be172c30-d8eb-4ef1-bafd-23a873050671",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail ef6131f4-d47b-4697-bda8-858e4edbe640",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 93c0ff24-fd4c-4d85-9948-c4426d3e1d59",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail b59bbb1e-3e75-4d95-8be7-eb2b1d7f5b30",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 72086d95-d11c-4c4c-9174-8e2efb512eee",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 72b7de4d-b0b2-4ef0-9d0b-da34b12b223a",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail e55c720e-ec30-4f03-8ddd-c3356b4d2e98",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail efd16444-c720-4a3e-858f-e23fcfcd0f9d",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 8516035e-34a1-43dc-9877-ea60a4f4f3cb",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail dd8930c2-b030-442b-a190-46fd91bbd805",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail da5aa2d6-8d2b-444e-86dc-eccb74b8c02c",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail d4febc03-c390-4c89-bcc9-e56db84057e6",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail beb11be8-0ae2-467b-9af1-ad3aed4f8c82",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 7d1dd20d-0c52-42b1-8c0d-98621623a102",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail da6fe174-9bcb-41cc-80f5-3242fe9d6a53",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 36d5151f-6741-429f-94b9-18ff9a747f7e",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 3657c3f8-6d99-4273-8588-2f0cd8c9efe8",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 62363c39-e998-4881-8e19-0e1c376205dc",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail ad779322-3950-4652-ad20-63e9b7fe844f",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 4d9104e2-f4c6-4123-8b4e-8f417f05c670",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 9fce3fe4-dccd-4c60-b299-91f175d260a8",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 2c4bab2b-440e-476f-b70f-f7df98e49f27",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 4777048e-1c0d-483a-91da-8bdf50398513",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 276b4343-4327-4be2-92ec-0c505d616ac6",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 49b7f0ff-c079-4960-b79e-c254da42ba32",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 54872f32-a9e0-426f-9e84-684c89669979",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 54385e46-5ca8-41f0-9005-0dac2e19bb11",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 5187c4e6-72b4-468f-869b-d02dec23a0a6",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 2db09649-06f1-43f1-aa9b-eea70dd50469",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 2d0ee291-4fdb-4f11-a77e-5f5160991c12",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail a1e9983d-462e-47a3-a606-68ffea0b6bc3",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail b75b43d8-0177-425b-a117-413cf338f33e",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail ea01eddc-a0af-45a6-ac80-81b40c533df5",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail f8a8322f-cb02-4e78-9294-0c96e2f04a1a",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail ca6069fa-48fd-4154-8bae-da89708c6d91",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail f897c4ca-c05d-407c-9dce-3165639dd85e",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 38e6f673-d629-4101-a11b-5f369fb32ba4",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail d268acba-1a54-4a2c-8247-cb3e7b7878d4",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 17901083-2fd2-482a-b739-8d1f4fcf4f59",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 7de90b38-d3b1-471c-ad80-7c787bc076cc",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 0e0dd1b9-c18d-436e-972c-33e690ce7e4b",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 1242a696-e7c7-4682-8a01-3f699f38dcf6",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 7c676a32-40e3-4107-a8a8-2e7416c8e733",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 76cf7e78-c940-4478-a4f7-661e383a3f9a",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail 91504f65-6706-44a3-874a-a7bd7bdee331",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "screen detail a512e296-fa0e-4de5-9500-092318ab3c92",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "companies active",
+      "ok": true,
+      "rows": 21
+    },
+    {
+      "label": "company detail f5fd55a4-628b-4264-a99b-ca6c0d6a7ef6",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "company detail 10ed419f-3bd4-4389-bf65-5de2cdb76ff6",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "company detail fff3350e-51cb-427b-bb2a-cf9d0a70f510",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "company detail 4afa2c81-9425-4706-aa8c-dbe73adf0c27",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "company detail 602c3355-4f86-40e3-a3c2-bbd623b005c3",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "company detail 92d612b8-fd84-48f2-a134-ceb43b039406",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "company detail 16cc31f9-879c-42f2-88f3-fb58bdbd580c",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "company detail 33b64d5c-04f6-4387-933a-846e0d518c01",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "company detail cd23ce7c-6676-4105-afa6-57d56953d4a8",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "company detail 9dac2302-6abe-40f3-8399-a90099bec06b",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "company detail 2cec9b14-ea8d-481a-ab7b-f95cabd7de5d",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "company detail 9cd5403c-ec01-4b4a-a18c-1f023b5e0b5e",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "company detail 7b63942a-e62c-4980-84b8-26ba36e24e9a",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "company detail 3b00b9ce-97b6-4e1a-8a39-bafaf7a0c37c",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "company detail 0ae111b3-bf6e-4fe6-bbb6-46a6b78e15ee",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "company detail 0342af46-9c0c-427b-ad27-21e8553056f9",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "company detail 4cd63693-f79d-4353-8a13-ac452ebea8f2",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "company detail 277a159c-12d8-4e2a-9f20-27ce4f0c41a6",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "company detail e97e43ce-a0c3-4071-8b55-3068d4d0d41a",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "company detail f309a843-0693-4a0d-8a07-6fd5ed3ee0b6",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "company detail 9216e95d-65bb-464c-96ec-283fd46f7171",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "contacts active",
+      "ok": true,
+      "rows": 11
+    },
+    {
+      "label": "companies archived",
+      "ok": true,
+      "rows": 0
+    },
+    {
+      "label": "contacts archived",
+      "ok": true,
+      "rows": 0
+    },
+    {
+      "label": "companies all",
+      "ok": true,
+      "rows": 21
+    },
+    {
+      "label": "company detail f5fd55a4-628b-4264-a99b-ca6c0d6a7ef6",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "company detail 10ed419f-3bd4-4389-bf65-5de2cdb76ff6",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "company detail fff3350e-51cb-427b-bb2a-cf9d0a70f510",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "company detail 4afa2c81-9425-4706-aa8c-dbe73adf0c27",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "company detail 602c3355-4f86-40e3-a3c2-bbd623b005c3",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "company detail 92d612b8-fd84-48f2-a134-ceb43b039406",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "company detail 16cc31f9-879c-42f2-88f3-fb58bdbd580c",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "company detail 33b64d5c-04f6-4387-933a-846e0d518c01",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "company detail cd23ce7c-6676-4105-afa6-57d56953d4a8",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "company detail 9dac2302-6abe-40f3-8399-a90099bec06b",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "company detail 2cec9b14-ea8d-481a-ab7b-f95cabd7de5d",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "company detail 9cd5403c-ec01-4b4a-a18c-1f023b5e0b5e",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "company detail 7b63942a-e62c-4980-84b8-26ba36e24e9a",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "company detail 3b00b9ce-97b6-4e1a-8a39-bafaf7a0c37c",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "company detail 0ae111b3-bf6e-4fe6-bbb6-46a6b78e15ee",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "company detail 0342af46-9c0c-427b-ad27-21e8553056f9",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "company detail 4cd63693-f79d-4353-8a13-ac452ebea8f2",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "company detail 277a159c-12d8-4e2a-9f20-27ce4f0c41a6",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "company detail e97e43ce-a0c3-4071-8b55-3068d4d0d41a",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "company detail f309a843-0693-4a0d-8a07-6fd5ed3ee0b6",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "company detail 9216e95d-65bb-464c-96ec-283fd46f7171",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "contacts all",
+      "ok": true,
+      "rows": 11
+    },
+    {
+      "label": "companies sort name",
+      "ok": true,
+      "rows": 1
+    },
+    {
+      "label": "companies sort type",
+      "ok": true,
+      "rows": 1
+    },
+    {
+      "label": "companies sort contacts",
+      "ok": true,
+      "rows": 1
+    },
+    {
+      "label": "companies sort tax_id",
+      "ok": true,
+      "rows": 1
+    },
+    {
+      "label": "job titles",
+      "ok": true,
+      "rows": 4
+    },
+    {
+      "label": "orders list",
+      "ok": true,
+      "rows": 1
+    },
+    {
+      "label": "order detail 42b1065c-c19a-4603-a60e-4068cda97ac0",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "brands",
+      "ok": true,
+      "rows": 1
+    },
+    {
+      "label": "brand detail",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "availability",
+      "ok": true,
+      "rows": null
+    },
+    {
+      "label": "dashboard",
+      "ok": true,
+      "rows": null
+    }
+  ],
+  "validation": {
+    "tests": 452,
+    "tests_passed": 452,
+    "typescript": "passed",
+    "production_build": "passed",
+    "diff_check": "passed",
+    "eslint_errors": 8,
+    "eslint_warnings": 15
+  },
+  "remaining_eslint_errors": [
+    {
+      "file": "web/app/(dashboard)/companies/vinculo-form.tsx",
+      "line": 63,
+      "rule": "react-hooks/set-state-in-effect",
+      "message": "Error: Calling setState synchronously within an effect can trigger cascading renders"
+    },
+    {
+      "file": "web/app/(dashboard)/finance/page.tsx",
+      "line": 169,
+      "rule": "react-hooks/purity",
+      "message": "Error: Cannot call impure function during render"
+    },
+    {
+      "file": "web/app/(dashboard)/orders/new/nueva-form.tsx",
+      "line": 134,
+      "rule": "react-hooks/set-state-in-effect",
+      "message": "Error: Calling setState synchronously within an effect can trigger cascading renders"
+    },
+    {
+      "file": "web/app/(dashboard)/orders/new/nueva-form.tsx",
+      "line": 218,
+      "rule": "react-hooks/set-state-in-effect",
+      "message": "Error: Calling setState synchronously within an effect can trigger cascading renders"
+    },
+    {
+      "file": "web/app/(dashboard)/orders/order-lines-form.tsx",
+      "line": 157,
+      "rule": "react-hooks/set-state-in-effect",
+      "message": "Error: Calling setState synchronously within an effect can trigger cascading renders"
+    },
+    {
+      "file": "web/app/(dashboard)/screens/venue-map-picker.tsx",
+      "line": 36,
+      "rule": "react-hooks/refs",
+      "message": "Error: Cannot access refs during render"
+    },
+    {
+      "file": "web/components/entity-list.tsx",
+      "line": 41,
+      "rule": "react-hooks/set-state-in-effect",
+      "message": "Error: Calling setState synchronously within an effect can trigger cascading renders"
+    },
+    {
+      "file": "web/hooks/use-mobile.ts",
+      "line": 14,
+      "rule": "react-hooks/set-state-in-effect",
+      "message": "Error: Calling setState synchronously within an effect can trigger cascading renders"
+    }
+  ],
+  "visual_pages": [
+    "/",
+    "/finance",
+    "/screens",
+    "/orders",
+    "/orders/new",
+    "/occupancy",
+    "/companies",
+    "/contacts",
+    "/brands",
+    "/inbox",
+    "/settings"
+  ],
+  "observed_finance": {
+    "orders": 1,
+    "lines": 2,
+    "sales_minor": 449982,
+    "ticket_minor": 449982
+  },
+  "screen_picker": {
+    "active_screens": 203,
+    "options": 203
+  },
+  "mutations": "Application code and audit artifacts changed; business data not edited. Integration fixtures created and removed only in dooh_test. Existing dev server restarted on port 3000."
+}

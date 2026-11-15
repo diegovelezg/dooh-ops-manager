@@ -1,5 +1,5 @@
-// Miembros del tenant (lecturas service_role). Escrituras en members-actions.ts.
-import { getSupabase } from "@/lib/supabase";
+// Miembros del tenant (lecturas con identidad de servidor). Escrituras en members-actions.ts.
+import { surql } from "@/lib/surreal";
 import { isMemberRole, type MemberRole } from "@/lib/roles";
 
 export interface StoreMember {
@@ -9,37 +9,20 @@ export interface StoreMember {
   created_at: string | null;
 }
 
-/** Miembros de la tienda ordenados por antigüedad. Email best-effort (admin API). */
+/** Miembros de la tienda ordenados por antigüedad. El email viaja en el
+ *  propio registro `user` (sin Admin API aparte). */
 export async function listStoreMembers(storeId: string): Promise<StoreMember[]> {
-  const db = getSupabase();
-  const { data, error } = await db
-    .from("sys_memberships")
-    .select("user_id,role,created_at")
-    .eq("store_id", storeId)
-    .order("created_at", { ascending: true });
-  if (error) throw new Error(`Members read: ${error.message}`);
-  const rows = (data ?? []) as Array<Record<string, unknown>>;
-  // Emails vía Admin API (service_role). Si falla, se muestra el user_id.
-  let emailById = new Map<string, string>();
-  try {
-    const { data: users } = await db.auth.admin.listUsers({ perPage: 100 });
-    emailById = new Map(
-      ((users?.users ?? []) as Array<{ id: string; email?: string | null }>).map((u) => [u.id, u.email ?? ""]),
-    );
-  } catch {
-    emailById = new Map();
-  }
-  return rows
-    .map((r) => {
-      const uid = String(r.user_id ?? "");
-      if (!uid) return null;
-      const role = r.role;
-      return {
-        user_id: uid,
-        email: emailById.get(uid) ?? null,
-        role: isMemberRole(role) ? role : ("seller" as MemberRole),
-        created_at: (r.created_at as string | null) ?? null,
-      };
-    })
-    .filter((m): m is StoreMember => m !== null);
+  const rows = await surql<
+    Array<{ user_id: string; email: string | null; role: unknown; created_at: string | null }>
+  >(
+    `SELECT record::id(in) AS user_id, in.email AS email, role, <string> created_at AS created_at
+     FROM member_of WHERE out = type::record('sys_store', $store) ORDER BY created_at ASC`,
+    { store: storeId },
+  );
+  return rows.map((r) => ({
+    user_id: r.user_id,
+    email: r.email ?? null,
+    role: isMemberRole(r.role) ? r.role : ("seller" as MemberRole),
+    created_at: r.created_at ?? null,
+  }));
 }

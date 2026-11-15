@@ -47,6 +47,9 @@ describe("orderStage", () => {
       stage: "cerrada",
     });
   });
+  it("resolución explícita de todas las líneas permite cierre aun si no llegaron los materiales", () => {
+    assert.equal(orderStage({...base, ended:true, certified:true, materialsOk:false}).stage,"cerrada");
+  });
   it("paid legacy se ignora (no frena el cierre operativo)", () => {
     assert.deepEqual(orderStage({ ...base, ended: true, certified: true, paid: false }), {
       index: 6,
@@ -74,21 +77,21 @@ describe("ioNumber", () => {
 describe("orderTiming", () => {
   const order = { starts_at: "2026-11-10", ends_at: "2026-11-10" };
   it("cabecera incluye todo el último día de Lima y comienza a medianoche local", () => {
-    assert.equal(orderTiming(order, [], Date.parse("2026-11-10T04:59:59Z")).started, false);
-    assert.equal(orderTiming(order, [], Date.parse("2026-11-10T05:00:00Z")).inFlight, true);
-    assert.equal(orderTiming(order, [], Date.parse("2026-11-11T04:59:59Z")).ended, false);
-    assert.equal(orderTiming(order, [], Date.parse("2026-11-11T05:00:00Z")).ended, true);
+    assert.equal(orderTiming(order, [], Date.parse("2026-11-10T04:59:59Z"), "America/Lima").started, false);
+    assert.equal(orderTiming(order, [], Date.parse("2026-11-10T05:00:00Z"), "America/Lima").inFlight, true);
+    assert.equal(orderTiming(order, [], Date.parse("2026-11-11T04:59:59Z"), "America/Lima").ended, false);
+    assert.equal(orderTiming(order, [], Date.parse("2026-11-11T05:00:00Z"), "America/Lima").ended, true);
   });
   const lines = [
     { starts_at: "2026-11-10T00:00:00-05:00", ends_at: "2026-11-11T00:00:00-05:00" },
     { starts_at: "2026-11-15T00:00:00-05:00", ends_at: "2026-11-16T00:00:00-05:00" },
   ];
   it("no declara al aire el hueco entre líneas ni cierra mientras quedan períodos futuros", () => {
-    const timing = orderTiming(order, lines, Date.parse("2026-11-12T12:00:00Z"));
+    const timing = orderTiming(order, lines, Date.parse("2026-11-12T12:00:00Z"), "America/Lima");
     assert.deepEqual(timing, { started: true, inFlight: false, ended: false });
     assert.equal(orderStage({ ...base, ...timing }).stage, "programada");
   });
   it("fin exclusivo de línea no agrega otro día", () => {
-    assert.equal(orderTiming(order, lines, Date.parse("2026-11-16T05:00:00Z")).ended, true);
+    assert.equal(orderTiming(order, lines, Date.parse("2026-11-16T05:00:00Z"), "America/Lima").ended, true);
   });
 });

@@ -1,11 +1,12 @@
 import { FunctionTool, LlmAgent } from "@google/adk";
 import { z } from "zod";
-import { getSupabase } from "@/lib/supabase";
+import { getStore } from "@/lib/stores-db";
+import { selectInvoices, selectLines, selectOrders } from "@/lib/orders-store";
 import { getCrmCompany, listCrmCompanies } from "@/lib/crm-db";
 import { getOrderDetail, listOrders } from "@/lib/orders-db";
 import { getScreenDetail, listScreens } from "@/lib/screens-db";
 import { getScreenOccupancy } from "@/lib/availability";
-import { addDays, todayLima } from "@/lib/availability-utils";
+import { addDays, todayIn } from "@/lib/availability-utils";
 import { getLlmConfig } from "@/lib/ai/llm-config";
 import { resolveModelInstance } from "@/lib/ai/model-resolver";
 import { bucketMonthly, computeFinanceKpis } from "@/lib/finance";
@@ -17,6 +18,8 @@ import { DEFAULT_SLOTS_PER_SCREEN } from "@/lib/store-slots";
 
 export interface AgentContext {
   storeId: string | null;
+  /** Zona IANA del tenant (define "hoy" y los días que ve el agente). */
+  timezone: string;
   customerId?: string | null;
   companyId?: string | null;
   contactId?: string | null;
@@ -49,7 +52,7 @@ function getCompanyTool(ctx: AgentContext) {
     description:
       "Ficha de una empresa del tenant (anunciante/agencia/proveedor) con contactos y OIs. Busca por company_id exacto o por texto q (nombre/tax_id/dominio).",
     parameters: z.object({
-      company_id: z.string().uuid().describe("ID exacto de la empresa (crm_companies.id).").optional(),
+      company_id: z.string().uuid().describe("ID exacto de la empresa (crm_company.id).").optional(),
       q: z.string().min(2).max(120).describe("Texto a buscar (nombre, ID fiscal, dominio o email).").optional(),
     }),
     execute: async ({ company_id, q }: { company_id?: string; q?: string }) => {
@@ -116,7 +119,7 @@ function getOrderTool(ctx: AgentContext) {
     description:
       "Estado real de una orden de inserción: etapa operativa (Firmada/Materiales/Programada/Salida atrasada/Al aire/Por certificar/Cerrada), OM, materiales/QC y cobro en paralelo. Busca por order_id, io_number o texto q.",
     parameters: z.object({
-      order_id: z.string().uuid().describe("ID exacto de la orden (io_orders.id).").optional(),
+      order_id: z.string().uuid().describe("ID exacto de la orden (io_order.id).").optional(),
       io_number: z.string().min(3).max(40).describe("Número legible (p.ej. SM-2026-0005).").optional(),
       q: z.string().min(2).max(120).describe("Texto a buscar (marca, anunciante o número).").optional(),
     }),
@@ -125,7 +128,6 @@ function getOrderTool(ctx: AgentContext) {
       if (!storeId) return { error: "Sin tienda en contexto." };
       if (!order_id && !io_number && !q) return { error: "Pasa order_id, io_number o q." };
       try {
-        const db = getSupabase();
         let targetId: string | null = order_id ?? null;
         if (!targetId) {
           const needle = (io_number ?? q ?? "").trim();
@@ -155,20 +157,16 @@ function getOrderTool(ctx: AgentContext) {
         if (!detail) return { error: "Orden no encontrada." };
         const o = detail.order as Record<string, unknown>;
         const status = String(o.status ?? "");
-        const hasOm = detail.io_agency_orders.length > 0;
-        const creaAny = detail.creatives.length > 0;
-        const creaPending = detail.creatives.filter(
-          (c) => c.qc_status !== "approved" || c.legal_status !== "approved",
-        ).length;
-        const materialsOk = creaAny && creaPending === 0;
-
-        const certified = detail.photos_count > 0;
+        const hasOm = detail.readiness.authorized;
+        const creaPending = detail.readiness.materials ? 0 : detail.lines.length;
+        const materialsOk = detail.readiness.materials;
+        const certified = detail.readiness.certified;
         const { index, stage } = orderStage({
           status: status || null,
           signed: status === "signed",
           hasOm,
           materialsOk,
-          ...orderTiming(o, detail.lines, Date.now()),
+          ...orderTiming(o, detail.lines, Date.now(), ctx.timezone),
           certified,
         });
         const gross = detail.lines.reduce((a, l) => a + Number(l.rate_minor ?? 0), 0);
@@ -179,8 +177,8 @@ function getOrderTool(ctx: AgentContext) {
           invoices: invSame.map(toBillingInvoice),
           starts_at: (o.starts_at as string | null) ?? null,
           payment_terms_days: typeof o.payment_terms_days === "number" ? (o.payment_terms_days as number) : null,
+          tz: ctx.timezone,
         });
-        void db;
         return {
           id: String(o.id ?? targetId),
           io_number: (o.io_number as string | null) ?? null,
@@ -195,7 +193,7 @@ function getOrderTool(ctx: AgentContext) {
           ends_at: (o.ends_at as string | null) ?? null,
           currency: orderCurrency,
           om: { has_om: hasOm, count: detail.io_agency_orders.length },
-          materiales: { any: creaAny, pending: creaPending, ok: materialsOk },
+          materiales: { any: detail.creatives.length > 0, pending: creaPending, ok: materialsOk },
           evidencia: { photos: detail.photos_count, certified },
           cobertura: { lines: detail.lines.length, bookings: detail.bookings_count, gross_minor: gross },
           cobro: {
@@ -223,7 +221,7 @@ function getScreenTool(ctx: AgentContext) {
     description:
       "Ficha de una pantalla con precio, impacto/CPM y ocupación por slots en un periodo. Para '¿está libre?' usa from/to (por defecto hoy→hoy+13 Lima) y slots (cupo pedido, default 1). free = hay cupo para esos slots todo el periodo; min_free_slots_in_period dice el resto mínimo.",
     parameters: z.object({
-      screen_id: z.string().uuid().describe("ID exacto de la pantalla (inv_screens.id).").optional(),
+      screen_id: z.string().uuid().describe("ID exacto de la pantalla (inv_screen.id).").optional(),
       q: z.string().min(2).max(120).describe("Texto a buscar (pantalla, venue, distrito, marca).").optional(),
       from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe("Inicio inclusivo yyyy-mm-dd.").optional(),
       to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe("Fin inclusivo yyyy-mm-dd.").optional(),
@@ -244,7 +242,7 @@ function getScreenTool(ctx: AgentContext) {
     }) => {
       const storeId = needStore(ctx);
       if (!storeId) return { error: "Sin tienda en contexto." };
-      const start = from ?? todayLima();
+      const start = from ?? todayIn(ctx.timezone);
       const end = to ?? addDays(start, 13);
       if (end < start) return { error: `Rango inválido: ${start} > ${end}.` };
       const wanted = Number.isSafeInteger(slots) && (slots as number) >= 1 && (slots as number) <= 100 ? (slots as number) : 1;
@@ -409,49 +407,26 @@ function searchInventoryTool(ctx: AgentContext) {
   });
 }
 
-async function fetchFinance(storeId: string, currency?: string) {
-  const db = getSupabase();
-  const { data: store } = await db.from("sys_stores").select("shop_currency").eq("id", storeId).maybeSingle();
-  const base = normalizeCurrency((store as Record<string, unknown> | null)?.shop_currency ?? "PEN", "PEN");
+async function fetchFinance(storeId: string, tz: string, currency?: string) {
+  const store = await getStore(storeId);
+  const base = normalizeCurrency(store?.shop_currency ?? "PEN", "PEN");
   const viewCurrency = currency ? normalizeCurrency(currency, base) : base;
-  const { data: ioData, error: ioErr } = await db
-    .from("io_orders")
-    .select("id,currency")
-    .eq("store_id", storeId)
-    .neq("status", "cancelled")
-    .limit(500);
-  if (ioErr) throw new Error(`ios: ${ioErr.message}`);
-  const ios = (ioData ?? []) as Array<Record<string, unknown>>;
+  const ios = await selectOrders(storeId, { live: true });
   const ioIds = ios.map((r) => String(r.id));
   const currencyByIo = new Map(ios.map((r) => [String(r.id), normalizeCurrency(r.currency, viewCurrency)]));
-  let lineRows: Array<Record<string, unknown>> = [];
-  if (ioIds.length > 0) {
-    const { data: ldata, error: lerr } = await db
-      .from("io_lines")
-      .select("io_id,rate_minor,starts_at")
-      .eq("store_id", storeId)
-      .in("io_id", ioIds)
-      .limit(5000);
-    if (lerr) throw new Error(`lineas: ${lerr.message}`);
-    lineRows = (ldata ?? []) as Array<Record<string, unknown>>;
-  }
-  const { data: invData, error: invErr } = await db
-    .from("io_invoices")
-    .select("amount_minor,currency,status,issue_date,due_date,payments:io_invoice_payments!io_invoice_payments_same_store_fk(*)")
-    .eq("store_id", storeId)
-    .limit(2000);
-  if (invErr) throw new Error(`facturas: ${invErr.message}`);
-  const invRows = (invData ?? []) as Array<Record<string, unknown>>;
+  const lineRows = await selectLines(storeId, ioIds);
+  const invRows = await selectInvoices(storeId);
   const finOrders = lineRows
     .filter((r) => currencyByIo.get(String(r.io_id ?? "")) === viewCurrency)
     .map((r) => ({
+      order_id: String(r.io_id),
       total_amount: Number(r.rate_minor ?? 0),
       currency: viewCurrency,
       placed_at: (r.starts_at as string | null) ?? null,
     }));
-  const buckets = bucketMonthly(finOrders, viewCurrency);
-  const kpis = computeFinanceKpis(finOrders, viewCurrency);
-  const totals = aggregateCobranza(invRows.filter((v) => invoiceMatchesOrder(v.currency, viewCurrency)).map(toBillingInvoice), Date.now());
+  const buckets = bucketMonthly(finOrders, viewCurrency, tz);
+  const kpis = computeFinanceKpis(finOrders, viewCurrency, tz);
+  const totals = aggregateCobranza(invRows.filter((v) => invoiceMatchesOrder(v.currency, viewCurrency)).map(toBillingInvoice), Date.now(), tz);
   return { currency: viewCurrency, base, buckets, kpis, invoiced_minor: totals.invoicedMinor, paid_minor: totals.paidMinor, pending_minor: totals.pendingMinor };
 }
 
@@ -467,7 +442,7 @@ function getFinanceTool(ctx: AgentContext) {
       const storeId = needStore(ctx);
       if (!storeId) return { error: "Sin tienda en contexto." };
       try {
-        const f = await fetchFinance(storeId, currency);
+        const f = await fetchFinance(storeId, ctx.timezone, currency);
         return {
           currency: f.currency,
           ventas_mes_minor: f.kpis.salesMesMinor,
@@ -511,7 +486,7 @@ function explainKpiTool(ctx: AgentContext) {
       const storeId = needStore(ctx);
       if (!storeId) return { error: "Sin tienda en contexto." };
       try {
-        const [snap, fin] = await Promise.all([getDashboardSnapshot(storeId), fetchFinance(storeId, currency)]);
+        const [snap, fin] = await Promise.all([getDashboardSnapshot(storeId), fetchFinance(storeId, ctx.timezone, currency)]);
         const cur = fin.currency;
         switch (kpi) {
           case "ventas_mes":
@@ -610,9 +585,9 @@ export function createDoohTools(ctx: AgentContext) {
   ];
 }
 
-/** Bloque de contexto inyectado a la instrucción (foco de ficha + fecha Lima). */
+/** Bloque de contexto inyectado a la instrucción (foco de ficha + fecha del tenant). */
 export function buildScopeBlock(ctx: AgentContext): string {
-  const today = todayLima();
+  const today = todayIn(ctx.timezone);
   const focus: string[] = [];
   if (ctx.screenId) focus.push(`pantalla enfocada: ${ctx.screenId}`);
   if (ctx.companyId) focus.push(`empresa enfocada: ${ctx.companyId}`);
@@ -622,7 +597,7 @@ export function buildScopeBlock(ctx: AgentContext): string {
   if (ctx.focusLabel) focus.push(`etiqueta: ${ctx.focusLabel}`);
   if (ctx.view) focus.push(`vista: ${ctx.view}`);
   return [
-    `Contexto operativo: tienda=${ctx.storeId ?? "sin-tienda"} hoy=${today} (America/Lima) periodo por defecto=${today}→${addDays(today, 13)}.`,
+    `Contexto operativo: tienda=${ctx.storeId ?? "sin-tienda"} hoy=${today} (${ctx.timezone}) periodo por defecto=${today}→${addDays(today, 13)}.`,
     focus.length > 0 ? `Foco: ${focus.join(" · ")}.` : "Foco: general de la tienda.",
   ].join("\n");
 }
@@ -634,8 +609,10 @@ export function buildScopeBlock(ctx: AgentContext): string {
  * metering por tenant vía generateContentConfig (storeId/process).
  */
 export function getCustomerAgent(ctx?: AgentContext) {
+  if (!ctx?.timezone) throw new Error("Agente sin zona horaria del tenant.");
   const safe: AgentContext = {
-    storeId: ctx?.storeId ?? null,
+    storeId: ctx.storeId ?? null,
+    timezone: ctx.timezone,
     customerId: ctx?.customerId ?? null,
     companyId: ctx?.companyId ?? null,
     contactId: ctx?.contactId ?? null,

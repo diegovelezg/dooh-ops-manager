@@ -1,17 +1,6 @@
-import { getSupabase } from "@/lib/supabase";
+import { surql } from "@/lib/surreal";
 import { requireActiveStoreAccess } from "@/lib/api/guard";
 import { apiLog } from "@/lib/log";
-
-/** Distancia en metros (Haversine). */
-function distanceM(aLat: number, aLng: number, bLat: number, bLng: number): number {
-  const R = 6371000;
-  const toRad = (d: number) => (d * Math.PI) / 180;
-  const dLat = toRad(bLat - aLat);
-  const dLng = toRad(bLng - aLng);
-  const h =
-    Math.sin(dLat / 2) ** 2 + Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * Math.sin(dLng / 2) ** 2;
-  return 2 * R * Math.asin(Math.sqrt(h));
-}
 
 /**
  * GET /api/venues/nearby?lat=&lng=&radius_m= — ubicación existente más cercana.
@@ -32,35 +21,23 @@ export async function GET(req: Request) {
     const gated = await requireActiveStoreAccess();
     if (gated instanceof Response) return gated;
     const { storeId } = gated;
-    const db = getSupabase();
-    const { data, error } = await db
-      .from("inv_venues")
-      .select("id,name,city,district,latitude,longitude")
-      .eq("store_id", storeId)
-      .not("latitude", "is", null)
-      .not("longitude", "is", null)
-      .limit(2000);
-    if (error) throw new Error(`DB read: ${error.message}`);
-    let best: Record<string, unknown> | null = null;
-    let bestM = Number.POSITIVE_INFINITY;
-    for (const r of (data ?? []) as Array<Record<string, unknown>>) {
-      const vLat = Number(r.latitude);
-      const vLng = Number(r.longitude);
-      if (!Number.isFinite(vLat) || !Number.isFinite(vLng)) continue;
-      const m = distanceM(lat, lng, vLat, vLng);
-      if (m < bestM) {
-        bestM = m;
-        best = r;
-      }
-    }
-    if (!best || bestM > radius) return Response.json({ match: null });
+    // Cercanía nativa: `geo::distance` sobre el punto geoespacial del venue.
+    const [best] = await surql<Array<{ id: string; name: string; city?: string; district?: string; distance_m: number }>>(
+      `SELECT record::id(id) AS id, name, city, district, geo::distance(location, type::point([$lng, $lat])) AS distance_m
+       FROM inv_venue
+       WHERE store = type::record('sys_store', $store) AND location != NONE
+         AND geo::distance(location, type::point([$lng, $lat])) <= $radius
+       ORDER BY distance_m ASC LIMIT 1`,
+      { store: storeId, lat, lng, radius },
+    );
+    if (!best) return Response.json({ match: null });
     return Response.json({
       match: {
-        id: String(best.id),
+        id: best.id,
         name: String(best.name ?? ""),
         city: typeof best.city === "string" ? best.city : null,
         district: typeof best.district === "string" ? best.district : null,
-        distance_m: Math.round(bestM),
+        distance_m: Math.round(best.distance_m),
       },
     });
   } catch (e) {

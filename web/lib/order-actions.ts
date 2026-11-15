@@ -1,32 +1,36 @@
 "use server";
 
+import { consumesCapacity } from "@/lib/order-workflow";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { getSupabase } from "@/lib/supabase";
+import * as orders from "@/lib/orders-store";
+import { thrownMessage } from "@/lib/surreal";
+import { getCompany, getContact, getContactsById, createLink } from "@/lib/crm-store";
+import { isUniqueViolation } from "@/lib/surreal";
+import { listScreensBrief } from "@/lib/screens-store";
+
+/** Vínculo agencia↔anunciante nacido de una OI (origin='oi'). Idempotente: si el par ya existía, nada. */
+async function createOrderLink(storeId: string, agencyId: string, advertiserId: string, actor: string | null): Promise<void> {
+  try {
+    await createLink(storeId, agencyId, advertiserId, actor, "oi");
+  } catch (e) {
+    if (!isUniqueViolation(e)) throw e;
+  }
+}
+import { getStore } from "@/lib/stores-db";
 import { resolveTenantStoreAction as resolveTenantStore } from "@/lib/tenant";
 import { getScreenOccupancy, type ScreenConflict } from "@/lib/availability";
 import { DEFAULT_SLOTS_PER_SCREEN } from "@/lib/store-slots";
 import { resolveActor } from "@/lib/actor";
 import { isValidCurrency, normalizeCurrency } from "@/lib/currency";
-import { addDays, formatDate, isoDayPart, isISODateShape, limaDayStart } from "@/lib/format";
+import { addDays, dayOf, dayStart, displayEndOf, formatDate, isISODateShape } from "@/lib/format";
+import { getStoreTimeZone } from "@/lib/stores-db";
 import type { CrmState } from "@/lib/crm-actions";
 import { createLogger } from "@/lib/log";
 
 const log = createLogger("orders");
 
 // SSOT: resolveTenantStore = resolveTenantStoreAction (ver lib/tenant.ts).
-
-/** Número autogenerado vía función SQL (contador atómico por tienda+año). */
-async function mintIoNumber(
-  db: ReturnType<typeof getSupabase>,
-  storeId: string,
-): Promise<string> {
-  const { data, error } = await db.rpc("io_mint_number", { p_store: storeId });
-  if (error || typeof data !== "string" || !data) {
-    throw new Error(`No se pudo numerar la orden: ${error?.message ?? "sin número"}`);
-  }
-  return data;
-}
 
 /** Crea la OI en borrador con número autogenerado (etapa Firmada).
  *  Líneas y OM llegan después. */
@@ -37,7 +41,7 @@ export async function createOrderAction(form: FormData): Promise<CrmState> {
   // (directo) o una agencia. La marca sigue siendo texto libre del pedido.
   const advertiserRaw = String(form.get("advertiser_company_id") ?? "").trim() || null;
   if (!advertiserRaw) return { ok: false, message: "Anunciante requerido." };
-  const company = String(form.get("company_id") ?? "").trim() || null;
+  const company = String(form.get("company_id") ?? "").trim() || advertiserRaw;
   if (!company) return { ok: false, message: "Empresa requerida." };
   const brand = String(form.get("brand") ?? "").trim() || null;
   if (!brand) return { ok: false, message: "Marca requerida." };
@@ -47,11 +51,10 @@ export async function createOrderAction(form: FormData): Promise<CrmState> {
   // Condición de pago en días (0 = Contado). Fuente numérica para vencimientos:
   // due_date = issue_date + N días. El texto es solo display (paymentTermsLabel).
   const termsRaw = String(form.get("payment_terms_days") ?? "").trim();
-  if (termsRaw === "") return { ok: false, message: "Condición de pago requerida." };
-  const payment_terms_days = Number(termsRaw);
+  const payment_terms_days = termsRaw === "" ? null : Number(termsRaw);
   // Documento para facturación (select único requerido → 3 flags).
   const billingDoc = String(form.get("billing_doc") ?? "").trim();
-  if (!["orden_medios", "orden_compra", "contrato"].includes(billingDoc)) {
+  if (billingDoc && !["orden_medios", "orden_compra", "contrato"].includes(billingDoc)) {
     return { ok: false, message: "Documento para facturación requerido." };
   }
   const billing_detail = String(form.get("billing_detail") ?? "").trim() || null;
@@ -73,13 +76,7 @@ export async function createOrderAction(form: FormData): Promise<CrmState> {
   const currencyRaw = normalizeCurrency(form.get("currency"), "");
   let orderCurrency: string | null = null;
   try {
-    const dbCur = getSupabase();
-    const { data: storeRow } = await dbCur
-      .from("sys_stores")
-      .select("shop_currency")
-      .eq("id", t.storeId)
-      .maybeSingle();
-    orderCurrency = normalizeCurrency((storeRow as Record<string, unknown> | null)?.shop_currency, "PEN");
+    orderCurrency = normalizeCurrency((await getStore(t.storeId))?.shop_currency, "PEN");
   } catch {
     orderCurrency = "PEN";
   }
@@ -107,8 +104,7 @@ export async function createOrderAction(form: FormData): Promise<CrmState> {
   if (![inis.length, fins.length, totals.length, dias.length].every((n) => n === screens.length)) {
     return { ok: false, message: "Líneas incompletas." };
   }
-  const parsedLines: Array<{ screen: string; starts: string; ends: string; total: number; cant_dias: number | null; cant_slots: number }> = [];
-  const nextDayLima = (d: string): string => limaDayStart(addDays(d, 1));
+  const parsedLines: Array<{ screen: string; total: number; cant_dias: number | null; cant_slots: number }> = [];
   for (let i = 0; i < screens.length; i++) {
     if (!inis[i] || !fins[i]) return { ok: false, message: `Línea ${i + 1}: periodo requerido.` };
     if (fins[i] < inis[i]) return { ok: false, message: `Línea ${i + 1}: fin anterior al inicio.` };
@@ -119,45 +115,25 @@ export async function createOrderAction(form: FormData): Promise<CrmState> {
     if (cantSlots === null) return { ok: false, message: `Línea ${i + 1}: slots inválidos (1–100).` };
     parsedLines.push({
       screen: screens[i],
-      starts: limaDayStart(inis[i]),
-      // Rango '[)': fin exclusivo = día siguiente a la fecha fin de la OI.
-      ends: nextDayLima(fins[i]),
       total,
       cant_dias: Number.isFinite(cant) && cant > 0 ? cant : null,
       cant_slots: cantSlots,
     });
   }
   try {
-    const db = getSupabase();
     // Anti-sobreventa en la venta: el cliente no es la garantía (carrera entre
     // dos vendedores). Dos chequeos: solape intra-orden (la propia orden no
     // puede sumar cupo contra sí misma) y cupo por línea contra lo vigente
     // (su periodo × su q, no MAX sobre el envoltorio).
     const { findLineOverlaps } = await import("@/lib/order-lines");
-    const { findLineConflicts } = await import("@/lib/availability");
     if (
       findLineOverlaps(parsedLines.map((l, i) => ({ screen_id: l.screen, starts: inis[i], ends: fins[i], total: l.total }))).length > 0
     ) {
       return { ok: false, message: "Dos líneas usan la misma pantalla en periodos que se cruzan." };
     }
-    const hit = await findLineConflicts(
-      t.storeId,
-      parsedLines.map((l, i) => ({ screen_id: l.screen, starts: inis[i], ends: fins[i], slots: l.cant_slots })),
-    );
-    if (hit) {
-      const who = [hit.conflict.io_number, hit.conflict.brand].filter(Boolean).join(" · ");
-      const days = (hit.conflict.blockedDays ?? []).map((d) => formatDate(d)).join(", ");
-      return { ok: false, message: `Línea ${hit.index + 1}: sin slots en ese periodo${who ? ` por ${who}` : ""}${days ? ` (${days})` : ""}.` };
-    }
     // Las contrapartes deben pertenecer al tenant y estar activas (nada
     // nuevo con archivados; lo firmado vive en el snapshot de la NP).
-    const { data: cos, error: coerr } = await db
-      .from("crm_companies")
-      .select("id,kind,name,deleted_at")
-      .eq("store_id", t.storeId)
-      .eq("id", company)
-      .maybeSingle();
-    if (coerr) { log.warn("createOrderAction", { fail: `DB read: ${coerr.message}` }); return { ok: false, message: `DB read: ${coerr.message}` }; }
+    const cos = await getCompany(t.storeId, company);
     if (!cos) return { ok: false, message: "Empresa fuera de tu tienda." };
     {
       const { archivedBlockerMessage } = await import("@/lib/order-guards");
@@ -176,13 +152,8 @@ export async function createOrderAction(form: FormData): Promise<CrmState> {
     // directo ("contratante" marca el campo en el form).
     const kind = (cos as Record<string, unknown>).kind;
     // Anunciante: misma tienda, tipo anunciante, no archivado.
-    const { data: adv, error: adverr } = await db
-      .from("crm_companies")
-      .select("id,kind,name,deleted_at")
-      .eq("store_id", t.storeId)
-      .eq("id", advertiserRaw)
-      .maybeSingle();
-    if (adverr || !adv) return { ok: false, message: "Anunciante no encontrado en esta tienda." };
+    const adv = await getCompany(t.storeId, advertiserRaw);
+    if (!adv) return { ok: false, message: "Anunciante no encontrado en esta tienda." };
     {
       const { archivedBlockerMessage } = await import("@/lib/order-guards");
       const block = archivedBlockerMessage([
@@ -215,13 +186,8 @@ export async function createOrderAction(form: FormData): Promise<CrmState> {
     } else {
       const agencyRaw = String(form.get("agency_company_id") ?? "").trim() || null;
       if (!agencyRaw) return { ok: false, message: "Define la intermediaria o marca que es el contratante." };
-      const { data: ag, error: agerr } = await db
-        .from("crm_companies")
-        .select("id,kind,name,deleted_at")
-        .eq("store_id", t.storeId)
-        .eq("id", agencyRaw)
-        .maybeSingle();
-      if (agerr || !ag) return { ok: false, message: "Agencia intermediaria no encontrada en esta tienda." };
+      const ag = await getCompany(t.storeId, agencyRaw);
+      if (!ag) return { ok: false, message: "Agencia intermediaria no encontrada en esta tienda." };
       if ((ag as Record<string, unknown>).kind !== "agencia") {
         return { ok: false, message: "La agencia intermediaria debe ser una agencia de tu tienda." };
       }
@@ -253,19 +219,9 @@ export async function createOrderAction(form: FormData): Promise<CrmState> {
       manager_contact_id: "responsable",
     };
     const wanted = Object.values(contactIds).filter((x): x is string => !!x);
-    if (!contactIds.billing_contact_id) return { ok: false, message: "Contacto contratante requerido." };
-    if (!contactIds.signer_contact_id) return { ok: false, message: "Firmante requerido." };
     if (wanted.length > 0) {
-      const { data: found, error: cterr } = await db
-        .from("crm_contacts")
-        .select("id,company_id,deleted_at,first_name,last_name,email")
-        .eq("store_id", t.storeId)
-        .in("id", [...new Set(wanted)]);
-      if (cterr) { log.warn("createOrderAction", { fail: `DB read: ${cterr.message}` }); return { ok: false, message: `DB read: ${cterr.message}` }; }
+      const byId = await getContactsById(t.storeId, [...new Set(wanted)]);
       const allowedCompanies = new Set([company, agency_company_id].filter((x): x is string => !!x));
-      const byId = new Map(
-        ((found ?? []) as Array<Record<string, unknown>>).map((r) => [String(r.id), r]),
-      );
       const { archivedBlockerMessage } = await import("@/lib/order-guards");
       const fullName = (r: Record<string, unknown>): string | null => {
         const n = [r.first_name, r.last_name].filter((v) => typeof v === "string" && (v as string).trim()).join(" ");
@@ -291,7 +247,6 @@ export async function createOrderAction(form: FormData): Promise<CrmState> {
     // (editar, firmar, cancelar) debe sellar updated_by + updated_at.
     const actor = await resolveActor();
     const base = {
-      store_id: t.storeId,
       advertiser_company_id: advertiser,
       billing_company_id: billing,
       brand,
@@ -307,98 +262,39 @@ export async function createOrderAction(form: FormData): Promise<CrmState> {
       billing_detail,
       invoice_registration,
       billing_portal_email,
+      authorization_kind: billingDoc === "contrato" ? "CONTRACT" : billingDoc === "orden_compra" ? "OC" : billingDoc === "orden_medios" ? "OM" : undefined,
       status: "draft",
       currency: orderCurrency ?? "PEN",
-      // Periodo de la OI = envolvente de sus líneas (fechas inclusivas).
-      starts_at: inis.reduce((a, b) => (a < b ? a : b)),
-      ends_at: fins.reduce((a, b) => (a > b ? a : b)),
+      // El periodo de la OI (envolvente de sus líneas) lo fija la DB al guardar las líneas.
       payment_terms_days,
       created_by: actor,
       updated_by: actor,
     };
     // Valida pantallas del tenant antes de insertar.
-    const { data: scs, error: scerr } = await db
-      .from("inv_screens")
-      .select("id")
-      .eq("store_id", t.storeId)
-      .in("id", [...new Set(parsedLines.map((l) => l.screen))]);
-    if (scerr) { log.warn("createOrderAction", { fail: `DB read: ${scerr.message}` }); return { ok: false, message: `DB read: ${scerr.message}` }; }
-    if ((scs ?? []).length !== new Set(parsedLines.map((l) => l.screen)).size) {
+    const wantedScreens = [...new Set(parsedLines.map((l) => l.screen))];
+    if ((await listScreensBrief(t.storeId, { ids: wantedScreens })).length !== wantedScreens.length) {
       return { ok: false, message: "Pantalla fuera de tu inventario." };
     }
-    // Reintento único ante colisión de numeración (carrera entre dos creaciones).
-    for (let attempt = 0; attempt < 2; attempt++) {
-      const { data: io, error } = await db
-        .from("io_orders")
-        .insert({ ...base, io_number: await mintIoNumber(db, t.storeId) })
-        .select("id")
-        .maybeSingle();
-      if (error) {
-        if (error.code !== "23505" || attempt === 1) {
-          log.warn("createOrderAction", { fail: `DB write: ${error.message}` });
-          return { ok: false, message: `DB write: ${error.message}` };
-        }
-        continue;
-      }
-      const ioId = String((io as Record<string, unknown>).id);
-      // slot_id null: el slot se asigna al confirmar la orden (etapa Autorizada).
-      const { error: lerr } = await db.from("io_lines").insert(
-        parsedLines.map((l) => ({
-          store_id: t.storeId,
-          io_id: ioId,
-          screen_id: l.screen,
-          slot_id: null,
-          starts_at: l.starts,
-          ends_at: l.ends,
-          rate_minor: Math.round(l.total * 100),
-          tarifa_regular_minor: null,
-          cant_meses: null,
-          cant_dias: l.cant_dias,
-          cant_slots: l.cant_slots,
-          notes: null,
-        })),
+    // Una transacción: número correlativo + orden + líneas + guardia de capacidad. La DB es la
+    // autoridad ante concurrentes (registro compartido por pantalla); un conflicto de escritura
+    // lo reintenta el cliente con datos frescos. Si no hay cupo, no queda nada a medias.
+    let orderId: string;
+    try {
+      orderId = await orders.createOrderWithLines(
+        t.storeId,
+        base,
+        parsedLines.map((l, i) => ({ screen_id: l.screen, starts: inis[i], ends: fins[i], total: l.total, slots: l.cant_slots })),
+        actor,
       );
-      if (lerr) {
-        await db.from("io_orders").delete().eq("store_id", t.storeId).eq("id", ioId);
-        log.warn("createOrderAction", { fail: `DB write líneas: ${lerr.message}` });
-        return { ok: false, message: `DB write líneas: ${lerr.message}` };
+    } catch (e) {
+      const msg = thrownMessage(e);
+      if (/sin slots|cupo/i.test(msg)) {
+        log.warn("createOrderAction", { fail: `capacity guard: ${msg}` });
+        return { ok: false, message: "Sin cupo en ese periodo (otra venta lo tomó primero). Reintenta." };
       }
-      // Guardia transaccional en BD (issue #13, concurrentes): verifica cupo
-      // con lock por tienda. Si falla, compensa (borra la orden; las líneas
-      // caen por FK) para no dejar sobreventa. Falla cerrado.
-      try {
-        const guardLines = parsedLines.map((l, i) => ({
-          screen_id: l.screen,
-          starts: inis[i],
-          ends: fins[i],
-          slots: String(l.cant_slots),
-        }));
-        const { error: gerr } = await db.rpc("io_assert_capacity", {
-          p_store: t.storeId,
-          p_exclude_io: ioId,
-          p_lines: guardLines,
-        });
-        if (gerr) {
-          const msg = String(gerr.message ?? "");
-          // Sin función (migración pendiente): degradación elegante —
-          // el pre-check de arriba ya validó; no se borra la venta.
-          if (/function|column|assert_capacity/i.test(msg)) {
-            log.warn("createOrderAction", { fail: `capacity guard ausente: ${msg}` });
-          } else {
-            await db.from("io_orders").delete().eq("store_id", t.storeId).eq("id", ioId);
-            if (/sin slots|cupo/i.test(msg)) {
-              log.warn("createOrderAction", { fail: `capacity guard: ${msg}` });
-              return { ok: false, message: "Sin cupo en ese periodo (otra venta lo tomó primero). Reintenta." };
-            }
-            log.warn("createOrderAction", { fail: `DB guard: ${msg}` });
-            return { ok: false, message: "Sin cupo en ese periodo. Reintenta." };
-          }
-        }
-      } catch (e) {
-        await db.from("io_orders").delete().eq("store_id", t.storeId).eq("id", ioId);
-        log.warn("createOrderAction", { fail: `DB guard: ${e instanceof Error ? e.message : String(e)}` });
-        return { ok: false, message: "Sin cupo en ese periodo. Reintenta." };
-      }
+      throw e;
+    }
+    {
       // Vínculo explícito agencia ↔ anunciante (origin='oi', best-effort):
       // la OI asegura el par para que Vínculos lo muestre aunque sea la
       // primera operación conjunta. Nunca bloquea la creación.
@@ -410,23 +306,14 @@ export async function createOrderAction(form: FormData): Promise<CrmState> {
           agencyCompanyId: agency_company_id,
         });
         if (pair) {
-          const { error: linkErr } = await db.from("crm_company_links").insert({
-            store_id: t.storeId,
-            agency_company_id: pair.agencyCompanyId,
-            advertiser_company_id: pair.advertiserCompanyId,
-            origin: "oi",
-            created_by: actor,
-            updated_by: actor,
-          });
-          if (linkErr && linkErr.code !== "23505") throw linkErr;
+          await createOrderLink(t.storeId, pair.agencyCompanyId, pair.advertiserCompanyId, actor);
         }
       } catch {
         // Best-effort: la red derivada de OIs sigue mostrando la contraparte.
       }
       revalidatePath("/orders");
-      return { ok: true, message: "Orden creada." };
+      return { ok: true, message: "Cotización guardada, sin retener capacidad.", orderId };
     }
-    return { ok: false, message: "Colisión de numeración, reintenta." };
   } catch (e) {
     log.error("createOrderAction", { error: e instanceof Error ? e.message : String(e) });
     return { ok: false, message: e instanceof Error ? e.message : "Error." };
@@ -435,7 +322,7 @@ export async function createOrderAction(form: FormData): Promise<CrmState> {
 
 export async function createOrderRedirectAction(_prev: CrmState, form: FormData): Promise<CrmState> {
   const res = await createOrderAction(form);
-  if (res.ok) redirect("/orders");
+  if (res.ok && res.orderId) redirect(`/orders/${res.orderId}`);
   return res;
 }
 
@@ -473,15 +360,9 @@ export async function updateOrderAction(input: {
   const orderId = String(input.orderId ?? "").trim();
   if (!orderId) return { ok: false, message: "Falta la orden." };
   try {
-    const db = getSupabase();
-    const { data: existing, error: rerr } = await db
-      .from("io_orders")
-      .select("id,status,billing_company_id")
-      .eq("store_id", t.storeId)
-      .eq("id", orderId)
-      .maybeSingle();
-    if (rerr || !existing) return { ok: false, message: "Orden no encontrada en esta tienda." };
-    const st = String((existing as Record<string, unknown>).status ?? "");
+    const existing = await orders.getOrder(t.storeId, orderId);
+    if (!existing) return { ok: false, message: "Orden no encontrada en esta tienda." };
+    const st = String(existing.status ?? "");
     if (st === "cancelled") {
       return { ok: false, message: "La orden está cancelada." };
     }
@@ -527,19 +408,12 @@ export async function updateOrderAction(input: {
         if (!raw) {
           agency_company_id = null;
         } else {
-          const billingId = (existing as Record<string, unknown> | null)?.billing_company_id != null
-            ? String((existing as Record<string, unknown>).billing_company_id)
-            : null;
+          const billingId = existing.billing_company_id != null ? String(existing.billing_company_id) : null;
           if (billingId !== null && raw === billingId) {
             agency_company_id = raw;
           } else {
-            const { data: ag, error: agerr } = await db
-              .from("crm_companies")
-              .select("id,kind,name,deleted_at")
-              .eq("store_id", t.storeId)
-              .eq("id", raw)
-              .maybeSingle();
-            if (agerr || !ag) throw new Error("Agencia intermediaria no encontrada en esta tienda.");
+            const ag = await getCompany(t.storeId, raw);
+            if (!ag) throw new Error("Agencia intermediaria no encontrada en esta tienda.");
             if ((ag as Record<string, unknown>).kind !== "agencia") {
               throw new Error("La agencia intermediaria debe ser una agencia de tu tienda.");
             }
@@ -584,13 +458,8 @@ export async function updateOrderAction(input: {
         if (p[key] === undefined) return undefined;
         const raw = String(p[key] ?? "").trim();
         if (!raw) return null;
-        const { data: ct, error: cterr } = await db
-          .from("crm_contacts")
-          .select("id,deleted_at,first_name,last_name,email")
-          .eq("store_id", t.storeId)
-          .eq("id", raw)
-          .maybeSingle();
-        if (cterr || !ct) throw new Error(`Contacto (${label}) no encontrado en esta tienda.`);
+        const ct = await getContact(t.storeId, raw);
+        if (!ct) throw new Error(`Contacto (${label}) no encontrado en esta tienda.`);
         if ((ct as Record<string, unknown>).deleted_at != null) {
           throw new Error(`Contacto (${label}) archivado: restáuralo para operar con esta orden.`);
         }
@@ -617,22 +486,11 @@ export async function updateOrderAction(input: {
     }
     if (Object.keys(patch).length === 0) return { ok: true, message: "Sin cambios." };
     const actor = await resolveActor();
-    const { error } = await db
-      .from("io_orders")
-      .update({ ...patch, updated_at: new Date().toISOString(), updated_by: actor })
-      .eq("store_id", t.storeId)
-      .eq("id", orderId);
-    if (error) { log.warn("updateOrderAction", { fail: `DB write: ${error.message}` }); return { ok: false, message: `DB write: ${error.message}` }; }
+    await orders.patchOrder(t.storeId, orderId, { ...patch, updated_by: actor });
     // Si cambió la intermediaria, asegura el vínculo explícito (origin='oi').
     if (p.agency_company_id !== undefined) {
       try {
-        const { data: after } = await db
-          .from("io_orders")
-          .select("advertiser_company_id,billing_company_id,agency_company_id")
-          .eq("store_id", t.storeId)
-          .eq("id", orderId)
-          .maybeSingle();
-        const r = (after ?? {}) as Record<string, unknown>;
+        const r = (await orders.getOrder(t.storeId, orderId)) ?? {};
         const { linkPairForOrder } = await import("@/lib/company-links");
         const pair = linkPairForOrder({
           advertiserCompanyId: typeof r.advertiser_company_id === "string" ? r.advertiser_company_id : null,
@@ -640,15 +498,7 @@ export async function updateOrderAction(input: {
           agencyCompanyId: typeof r.agency_company_id === "string" ? r.agency_company_id : null,
         });
         if (pair) {
-          const { error: linkErr } = await db.from("crm_company_links").insert({
-            store_id: t.storeId,
-            agency_company_id: pair.agencyCompanyId,
-            advertiser_company_id: pair.advertiserCompanyId,
-            origin: "oi",
-            created_by: actor,
-            updated_by: actor,
-          });
-          if (linkErr && linkErr.code !== "23505") throw linkErr;
+          await createOrderLink(t.storeId, pair.agencyCompanyId, pair.advertiserCompanyId, actor);
         }
       } catch {
         // Best-effort: no bloquea la edición de la ficha.
@@ -711,67 +561,57 @@ export async function updateOrderLinesAction(input: {
   const slotsList = lines.map((l) => normalizeLineSlots(l.slots));
   if (slotsList.some((x) => x === null)) return { ok: false, message: "Línea con slots inválidos (1–100)." };
   try {
-    const db = getSupabase();
-    const { data: existing, error: rerr } = await db
-      .from("io_orders")
-      .select("id,status")
-      .eq("store_id", t.storeId)
-      .eq("id", orderId)
-      .maybeSingle();
-    if (rerr || !existing) return { ok: false, message: "Orden no encontrada en esta tienda." };
-    if (String((existing as Record<string, unknown>).status ?? "") !== "draft") {
+    const existing = await orders.getOrder(t.storeId, orderId);
+    if (!existing) return { ok: false, message: "Orden no encontrada en esta tienda." };
+    if (String(existing.status ?? "") !== "draft") {
       return { ok: false, message: "Solo borradores: las líneas de una orden avanzada ya no se editan." };
     }
     // Pantallas del tenant.
     const screenIds = [...new Set(lines.map((l) => l.screen_id))];
-    const { data: scs, error: scerr } = await db
-      .from("inv_screens")
-      .select("id")
-      .eq("store_id", t.storeId)
-      .in("id", screenIds);
-    if (scerr) { log.warn("updateOrderLinesAction", { fail: `DB read: ${scerr.message}` }); return { ok: false, message: `DB read: ${scerr.message}` }; }
-    if ((scs ?? []).length !== screenIds.length) {
+    if ((await listScreensBrief(t.storeId, { ids: screenIds })).length !== screenIds.length) {
       return { ok: false, message: "Pantalla fuera de tu inventario." };
     }
     // Sin facturas ni reservas: el bruto y la ocupación ya corrieron.
-    const [{ count: invCount }, { count: bookCount }] = await Promise.all([
-      db.from("io_invoices").select("id", { count: "exact", head: true }).eq("store_id", t.storeId).eq("io_id", orderId),
-      db.from("inv_bookings").select("id", { count: "exact", head: true }).eq("store_id", t.storeId).eq("insertion_order_id", orderId),
+    const [invCount, bookCount] = await Promise.all([
+      orders.countInvoices(t.storeId, orderId),
+      orders.countBookings(t.storeId, orderId),
     ]);
-    if ((invCount ?? 0) > 0) return { ok: false, message: "La orden tiene facturas: las líneas ya no se editan." };
-    if ((bookCount ?? 0) > 0) return { ok: false, message: "La orden tiene reservas: las líneas ya no se editan." };
+    if (invCount > 0) return { ok: false, message: "La orden tiene facturas: las líneas ya no se editan." };
+    if (bookCount > 0) return { ok: false, message: "La orden tiene reservas: las líneas ya no se editan." };
     // Anti-sobreventa por día (sin la propia orden): cada línea pide sus slots
     // (su periodo × su q, comparación inclusiva por días bloqueados).
     const { findLineConflicts } = await import("@/lib/availability");
-    const hit = await findLineConflicts(
+    const hit = consumesCapacity(existing) ? await findLineConflicts(
       t.storeId,
       lines.map((l, i) => ({ screen_id: l.screen_id, starts: l.starts, ends: l.ends, slots: slotsList[i] ?? 1 })),
       { excludeIoId: orderId },
-    );
+    ) : null;
     if (hit) {
       const who = [hit.conflict.io_number, hit.conflict.brand].filter(Boolean).join(" · ");
-      const days = (hit.conflict.blockedDays ?? []).map((d) => formatDate(d)).join(", ");
+      const tzHit = await getStoreTimeZone(t.storeId);
+      const days = (hit.conflict.blockedDays ?? []).map((d) => formatDate(d, tzHit)).join(", ");
       return { ok: false, message: `Línea ${hit.index + 1}: sin slots en ese periodo${who ? ` por ${who}` : ""}${days ? ` (${days})` : ""}.` };
     }
     const totals = lines.map((l) => totalToMinor(l.total));
     if (totals.some((x) => x === null)) return { ok: false, message: "Línea con total inválido." };
     const actor = await resolveActor();
-    const { error: rpcerr } = await db.rpc("io_replace_lines", {
-      p_store: t.storeId,
-      p_io: orderId,
-      p_lines: lines.map((l, i) => ({
-        screen_id: l.screen_id,
-        starts: l.starts,
-        ends: l.ends,
-        total: (totals[i] as number) / 100,
-        slots: slotsList[i] as number,
-        notes: typeof l.notes === "string" && l.notes.trim() ? l.notes.trim().slice(0, 2000) : null,
-      })),
-      p_actor: actor,
-    });
-    if (rpcerr) {
-      const msg = String(rpcerr.message ?? "");
-      // La BD es la autoridad ante concurrentes: traduce el raise a UX.
+    try {
+      await orders.replaceOrderLines(
+        t.storeId,
+        orderId,
+        lines.map((l, i) => ({
+          screen_id: l.screen_id,
+          starts: l.starts,
+          ends: l.ends,
+          total: (totals[i] as number) / 100,
+          slots: slotsList[i] as number,
+          notes: typeof l.notes === "string" && l.notes.trim() ? l.notes.trim().slice(0, 2000) : null,
+        })),
+        actor,
+      );
+    } catch (e) {
+      const msg = thrownMessage(e);
+      // La BD es la autoridad ante concurrentes: traduce el THROW a UX.
       if (/sin slots|cupo/i.test(msg)) {
         log.warn("updateOrderLinesAction", { fail: `capacity guard: ${msg}` });
         return { ok: false, message: "Sin cupo en ese periodo (otra venta lo tomó primero). Reintenta." };
@@ -804,7 +644,7 @@ export async function checkAvailabilityAction(input: {
   }
   try {
     const exclude = typeof input.excludeIoId === "string" && input.excludeIoId ? input.excludeIoId : null;
-    const ids = [...new Set((input.screenIds ?? []).map(String).filter(Boolean))].slice(0, 200);
+    const ids = [...new Set((input.screenIds ?? []).map(String).filter(Boolean))];
     const { getPeriodAvailability } = await import("@/lib/availability");
     const res = await getPeriodAvailability(t.storeId, ids.length > 0 ? ids : null, input.starts, input.ends, {
       excludeIoId: exclude,
@@ -834,7 +674,7 @@ export async function getScreenOccupancyAction(input: {
 }): Promise<OccupancyState> {
   const t = await resolveTenantStore();
   if ("error" in t) return { ok: false, occupancy: {}, capacities: {}, message: t.error };
-  const ids = [...new Set((input.screenIds ?? []).map(String).filter(Boolean))].slice(0, 200);
+  const ids = [...new Set((input.screenIds ?? []).map(String).filter(Boolean))];
   if (ids.length === 0 || !isISODateShape(input.from)) {
     return { ok: false, occupancy: {}, capacities: {}, message: "Parámetros inválidos." };
   }
@@ -889,72 +729,39 @@ export async function getScreenDayDetailAction(input: {
   const day = String(input.day ?? "").trim();
   if (!screenId || !isISODateShape(day)) return fail("Parámetros inválidos.");
   try {
-    const db = getSupabase();
-    const { data: scr } = await db
-      .from("inv_screens")
-      .select("id,name")
-      .eq("store_id", t.storeId)
-      .eq("id", screenId)
-      .maybeSingle();
+    const [scr] = await listScreensBrief(t.storeId, { ids: [screenId] });
     if (!scr) return fail("Pantalla no encontrada en esta tienda.");
-    const { getScreenCapacities, isHoldFresh, displayEndOf } = await import("@/lib/availability");
+    const { getScreenCapacities } = await import("@/lib/availability");
+    const tz = await getStoreTimeZone(t.storeId);
     const caps = await getScreenCapacities(t.storeId, [screenId]);
     const capacity = caps.get(screenId) ?? DEFAULT_SLOTS_PER_SCREEN;
-    const qStart = limaDayStart(day);
-    const qEnd = limaDayStart(addDays(day, 1));
+    const qStart = dayStart(day, tz);
+    const qEnd = dayStart(addDays(day, 1), tz);
     const lines: ScreenDayLine[] = [];
-    const { data: olines, error: lerr } = await db
-      .from("io_lines")
-      .select("starts_at,ends_at,cant_slots,io_orders!insertion_order_lines_io_id_fkey!inner(io_number,brand,status,created_at)")
-      .eq("store_id", t.storeId)
-      .eq("screen_id", screenId)
-      .lt("starts_at", qEnd)
-      .gt("ends_at", qStart);
-    if (lerr) return fail(`DB read: ${lerr.message}`);
-    for (const l of (olines ?? []) as Array<Record<string, unknown>>) {
-      const o = l.io_orders as unknown as Record<string, unknown> | null;
-      if (!o || o.status === "cancelled") continue;
-      if (o.status === "draft" && !isHoldFresh(typeof o.created_at === "string" ? o.created_at : null)) continue;
+    for (const l of await orders.listScreenDayLines(t.storeId, screenId, qStart, qEnd)) {
+      if (l.status === "cancelled") continue;
+      if (!consumesCapacity(l)) continue;
       const qty = Number(l.cant_slots ?? 1);
       lines.push({
-        io_number: typeof o.io_number === "string" ? o.io_number : null,
-        brand: typeof o.brand === "string" ? o.brand : null,
+        io_number: typeof l.io_number === "string" ? l.io_number : null,
+        brand: typeof l.brand === "string" ? l.brand : null,
         slots: Number.isFinite(qty) && qty >= 1 ? Math.floor(qty) : 1,
-        status: typeof o.status === "string" ? o.status : "—",
-        starts: isoDayPart(l.starts_at) ?? "",
-        ends: displayEndOf(String(l.ends_at)),
+        status: typeof l.status === "string" ? l.status : "—",
+        starts: dayOf(String(l.starts_at), tz),
+        ends: displayEndOf(String(l.ends_at), tz),
         source: "order",
       });
     }
-    const { data: slotRows, error: slotErr } = await db
-      .from("inv_slots")
-      .select("id")
-      .eq("store_id", t.storeId)
-      .eq("screen_id", screenId);
-    if (slotErr) return fail(`DB read: ${slotErr.message}`);
-    const slotIds = ((slotRows ?? []) as Array<Record<string, unknown>>).map((s) => String(s.id));
-    if (slotIds.length > 0) {
-      const { data: books, error: bookErr } = await db
-        .from("inv_bookings")
-        .select("starts_at,ends_at,status,io_orders!bookings_insertion_order_id_fkey(io_number,brand)")
-        .eq("store_id", t.storeId)
-        .in("slot_id", slotIds)
-        .neq("status", "cancelled")
-        .lt("starts_at", qEnd)
-        .gt("ends_at", qStart);
-      if (bookErr) return fail(`DB read: ${bookErr.message}`);
-      for (const b of ((books ?? []) as Array<Record<string, unknown>>)) {
-        const o = b.io_orders as unknown as Record<string, unknown> | null;
-        lines.push({
-          io_number: o && typeof o.io_number === "string" ? o.io_number : null,
-          brand: o && typeof o.brand === "string" ? o.brand : null,
-          slots: 1,
-          status: typeof b.status === "string" ? b.status : "—",
-          starts: isoDayPart(b.starts_at) ?? "",
-          ends: displayEndOf(String(b.ends_at)),
-          source: "booking",
-        });
-      }
+    for (const b of await orders.listScreenDayBookings(t.storeId, screenId, qStart, qEnd)) {
+      lines.push({
+        io_number: typeof b.io_number === "string" ? b.io_number : null,
+        brand: typeof b.brand === "string" ? b.brand : null,
+        slots: 1,
+        status: typeof b.status === "string" ? b.status : "—",
+        starts: dayOf(String(b.starts_at), tz),
+        ends: displayEndOf(String(b.ends_at), tz),
+        source: "booking",
+      });
     }
     lines.sort((a, b) => (a.starts < b.starts ? -1 : a.starts > b.starts ? 1 : 0));
     const reserved = lines.reduce((a, l) => a + l.slots, 0);

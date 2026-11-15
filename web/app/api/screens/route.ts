@@ -1,12 +1,12 @@
 import { getMyActiveStore, requireMyStoreAccess } from "@/lib/tenant";
-import { isSupabaseConfigured } from "@/lib/supabase";
+import { isDbConfigured } from "@/lib/surreal";
 import { apiLog } from "@/lib/log";
 
 // GET /api/screens?store= — picker de pantallas activas para editar líneas
 // de borradores. Misma forma que `ScreenPick` de nueva orden (SSOT:
-// id, nombre, detalle, código, precio). Solo lectura, top 200.
+// id, nombre, detalle, código, precio). Todas las pantallas activas del tenant.
 export async function GET(req: Request) {
-  if (!isSupabaseConfigured()) {
+  if (!isDbConfigured()) {
     return Response.json({ error: "Base de datos no disponible." }, { status: 500 });
   }
   const url = new URL(req.url);
@@ -17,32 +17,13 @@ export async function GET(req: Request) {
     if ((await requireMyStoreAccess(active.id).catch(() => false)) === false) {
       return Response.json({ error: "Sin acceso a esta tienda." }, { status: 403 });
     }
-    const { getSupabase } = await import("@/lib/supabase");
-    const db = getSupabase();
-    const { data: sc } = await db
-      .from("inv_screens")
-      .select("id,name,external_ref,technology,width_px,height_px,price_pen,supplier_company_id,inv_venues!screens_venue_id_fkey(name,district,city)")
-      .eq("store_id", active.id)
-      .eq("is_active", true)
-      .order("name", { ascending: true })
-      .limit(200);
-    const screenRows = ((sc ?? []) as Array<Record<string, unknown>>);
-    const supIds = [...new Set(screenRows.map((s) => s.supplier_company_id).filter((v): v is string => !!v))];
-    let supBy = new Map<string, string>();
-    if (supIds.length > 0) {
-      const { data: sups } = await db
-        .from("crm_companies")
-        .select("id,name")
-        .eq("store_id", active.id)
-        .in("id", supIds);
-      supBy = new Map(((sups ?? []) as Array<Record<string, unknown>>).map((c) => [String(c.id), String(c.name ?? "")]));
-    }
+    const { listScreensBrief } = await import("@/lib/screens-store");
+    const screenRows = await listScreensBrief(active.id, { activeOnly: true });
     const out = screenRows.map((s) => {
-      const v = s.inv_venues as unknown as { name?: unknown; district?: unknown; city?: unknown } | null;
-      const venue = typeof v?.name === "string" ? v.name : "";
-      const district = typeof v?.district === "string" ? v.district : "";
-      const city = typeof v?.city === "string" ? v.city : "";
-      const supplier = typeof s.supplier_company_id === "string" ? (supBy.get(s.supplier_company_id) ?? "") : "";
+      const venue = typeof s.venue_name === "string" ? s.venue_name : "";
+      const district = typeof s.district === "string" ? s.district : "";
+      const city = typeof s.city === "string" ? s.city : "";
+      const supplier = typeof s.supplier_name === "string" ? s.supplier_name : "";
       const w = Number(s.width_px);
       const h = Number(s.height_px);
       const res = Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0 ? `${w}×${h}` : "";
@@ -59,7 +40,7 @@ export async function GET(req: Request) {
       };
     });
     return Response.json(
-      { screens: out.slice(0, 200) },
+      { screens: out },
       { headers: { "cache-control": "no-store" } },
     );
   } catch (e) {

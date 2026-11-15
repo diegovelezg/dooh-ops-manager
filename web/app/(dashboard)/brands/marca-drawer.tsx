@@ -23,6 +23,7 @@ import { hasMinRole, isMemberRole, type MemberRole } from "@/lib/roles";
 import { formatDate, formatMoney, formatNumber, toTitleCase } from "@/lib/format";
 import type { BrandDetail } from "@/lib/brand-db";
 import { BrandPautaBadge } from "@/components/badges";
+import { useTz } from "@/components/tenant-time";
 
 // Carga diferida: chat y research solo se descargan al usarse (mismo
 // patrón que orden-drawer: el drawer inicial no paga react-markdown).
@@ -64,6 +65,7 @@ export function MarcaDrawer({
   brandName: string;
   onClose: () => void;
 }) {
+  const tz = useTz();
   const [tab, setTab] = useState<TabId>("ficha");
   const [detail, setDetail] = useState<MarcaDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -210,8 +212,8 @@ export function MarcaDrawer({
                 {ios.map((o) => (
                   <DrawerTableRow key={o.id}>
                     <DrawerTableTd className="font-medium">{o.io_number}</DrawerTableTd>
-                    <DrawerTableTd className="text-xs tabular-nums">{formatDate(o.starts_at)}</DrawerTableTd>
-                    <DrawerTableTd className="text-xs tabular-nums">{formatDate(o.ends_at)}</DrawerTableTd>
+                    <DrawerTableTd className="text-xs tabular-nums">{formatDate(o.starts_at, tz)}</DrawerTableTd>
+                    <DrawerTableTd className="text-xs tabular-nums">{formatDate(o.ends_at, tz)}</DrawerTableTd>
                     <DrawerTableTd><CompanyIOBadge status={o.status} /></DrawerTableTd>
                     <DrawerTableTd numeric className="tabular-nums"><Money amountMinor={o.total_minor} currency="PEN" /></DrawerTableTd>
                   </DrawerTableRow>

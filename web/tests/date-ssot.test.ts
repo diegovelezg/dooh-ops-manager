@@ -9,7 +9,12 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import {
   DATE_LOCALE,
-  DATE_TIME_ZONE,
+  DEFAULT_TIME_ZONE,
+  dayOf,
+  dayStart,
+  dayStartMs,
+  isValidTimeZone,
+  todayIn,
   DAY_MS,
   MONTH_SHORT_ES,
   addDays,
@@ -27,32 +32,31 @@ import {
   isValidISODate,
   isoDayPart,
   isoDayToNum,
-  limaDayStart,
   monthLabelES,
   parseISODate,
-  todayLima,
   toISODateLocal,
   toISODateUTC,
   toMonthKey,
-  utcDayStart,
 } from "../lib/format";
+
+const LIMA = "America/Lima";
 
 describe("SSOT fechas: display único dd/mm/yyyy", () => {
   it("formatDate: fecha o ISO → dd/mm/yyyy; inválido → —", () => {
-    assert.equal(formatDate("2026-11-03"), "03/11/2026");
-    assert.equal(formatDate("2026-11-03T00:00:00-05:00"), "03/11/2026");
-    assert.equal(formatDate("2026-11-03T14:05:00-05:00"), "03/11/2026");
-    assert.equal(formatDate(null), "—");
-    assert.equal(formatDate(""), "—");
-    assert.equal(formatDate("no-fecha"), "—");
-    assert.equal(formatDate(123 as unknown as string), "—");
+    assert.equal(formatDate("2026-11-03", LIMA), "03/11/2026");
+    assert.equal(formatDate("2026-11-03T00:00:00-05:00", LIMA), "03/11/2026");
+    assert.equal(formatDate("2026-11-03T14:05:00-05:00", LIMA), "03/11/2026");
+    assert.equal(formatDate(null, LIMA), "—");
+    assert.equal(formatDate("", LIMA), "—");
+    assert.equal(formatDate("no-fecha", LIMA), "—");
+    assert.equal(formatDate(123 as unknown as string, LIMA), "—");
   });
 
-  it("formatDateTime: timestamptz → dd/mm/yyyy hh:mm en Lima", () => {
-    assert.equal(formatDateTime("2026-11-03T14:05:00-05:00"), "03/11/2026 14:05");
-    assert.equal(formatDateTime("2026-11-03"), "03/11/2026");
-    assert.equal(formatDateTime("no-fecha"), "—");
-    assert.equal(formatDateTime(null), "—");
+  it("formatDateTime: instante → dd/mm/yyyy hh:mm en la zona del tenant", () => {
+    assert.equal(formatDateTime("2026-11-03T14:05:00-05:00", LIMA), "03/11/2026 14:05");
+    assert.equal(formatDateTime("2026-11-03", LIMA), "03/11/2026");
+    assert.equal(formatDateTime("no-fecha", LIMA), "—");
+    assert.equal(formatDateTime(null, LIMA), "—");
   });
 
   it("formatDayMonth: ISO → dd/mm", () => {
@@ -64,9 +68,9 @@ describe("SSOT fechas: display único dd/mm/yyyy", () => {
 
   it("formatTimeAgo usa el mismo dd/mm de respaldo", () => {
     const now = Date.parse("2026-11-08T12:00:00Z");
-    assert.equal(formatTimeAgo(new Date(now - 30_000).toISOString(), now), "ahora mismo");
-    assert.equal(formatTimeAgo(new Date(now - 5 * 60_000).toISOString(), now), "hace 5 min");
-    assert.equal(formatTimeAgo("2026-10-01T00:00:00-05:00", now), "01/10");
+    assert.equal(formatTimeAgo(new Date(now - 30_000).toISOString(), LIMA, now), "ahora mismo");
+    assert.equal(formatTimeAgo(new Date(now - 5 * 60_000).toISOString(), LIMA, now), "hace 5 min");
+    assert.equal(formatTimeAgo("2026-10-01T00:00:00-05:00", LIMA, now), "01/10");
   });
 });
 
@@ -113,18 +117,12 @@ describe("SSOT fechas: parse/canon", () => {
     assert.equal(dayNumToISO(isoDayToNum("2026-11-03")), "2026-11-03");
   });
 
-  it("inicios de día Lima/UTC y hoy Lima", () => {
-    assert.equal(limaDayStart("2026-11-03"), "2026-11-03T00:00:00-05:00");
-    assert.equal(utcDayStart("2026-11-03"), "2026-11-03T00:00:00Z");
-    assert.match(todayLima(), /^\d{4}-\d{2}-\d{2}$/);
-  });
-
   it("displayEndOf: exclusivo → inclusivo; safe no lanza", () => {
-    assert.equal(displayEndOf("2026-11-25T00:00:00-05:00"), "2026-11-24");
-    assert.throws(() => displayEndOf("NaN-nada"), /Fecha inválida/);
-    assert.equal(displayEndOfSafe("2026-11-25T00:00:00-05:00"), "2026-11-24");
-    assert.equal(displayEndOfSafe("NaN-nada"), null);
-    assert.equal(displayEndOfSafe(null), null);
+    assert.equal(displayEndOf("2026-11-25T00:00:00-05:00", LIMA), "2026-11-24");
+    assert.throws(() => displayEndOf("NaN-nada", LIMA), /Fecha inválida/);
+    assert.equal(displayEndOfSafe("2026-11-25T00:00:00-05:00", LIMA), "2026-11-24");
+    assert.equal(displayEndOfSafe("NaN-nada", LIMA), null);
+    assert.equal(displayEndOfSafe(null, LIMA), null);
   });
 
   it("meses: clave, etiqueta y aritmética sin rollover", () => {
@@ -136,8 +134,47 @@ describe("SSOT fechas: parse/canon", () => {
 
   it("constantes del negocio", () => {
     assert.equal(DATE_LOCALE, "es-PE");
-    assert.equal(DATE_TIME_ZONE, "America/Lima");
+    assert.equal(DEFAULT_TIME_ZONE, "America/Lima");
     assert.equal(DAY_MS, 86_400_000);
+  });
+});
+
+describe("zona horaria por tenant: BD en UTC, día según la zona", () => {
+  const INSTANT = "2026-11-14T03:00:00.000Z"; // 22:00 del 13 en Lima, 12:00 del 14 en Tokio
+  it("dayOf/todayIn dependen de la zona", () => {
+    assert.equal(dayOf(INSTANT, "America/Lima"), "2026-11-13");
+    assert.equal(dayOf(INSTANT, "Asia/Tokyo"), "2026-11-14");
+    assert.equal(dayOf(INSTANT, "America/Mexico_City"), "2026-11-13");
+    assert.equal(todayIn("Asia/Tokyo", Date.parse(INSTANT)), "2026-11-14");
+  });
+  it("dayStart: inicio de día en UTC por zona (oeste, este y DST)", () => {
+    assert.equal(dayStart("2026-11-14", "America/Lima"), "2026-11-14T05:00:00.000Z");
+    assert.equal(dayStart("2026-11-14", "Asia/Tokyo"), "2026-11-13T15:00:00.000Z");
+    assert.equal(dayStart("2026-07-01", "America/New_York"), "2026-07-01T04:00:00.000Z"); // EDT
+    assert.equal(dayStart("2026-12-01", "America/New_York"), "2026-12-01T05:00:00.000Z"); // EST
+  });
+  it("un día con DST dura 23/25 h y el inicio sigue el reloj de pared", () => {
+    const spring = dayStartMs("2026-03-08", "America/New_York");
+    assert.equal(dayStartMs("2026-03-09", "America/New_York") - spring, 23 * 3_600_000);
+    const fall = dayStartMs("2026-11-01", "America/New_York");
+    assert.equal(dayStartMs("2026-11-02", "America/New_York") - fall, 25 * 3_600_000);
+  });
+  it("round-trip dayOf(dayStart(d)) = d y fin exclusivo → último día", () => {
+    for (const tz of ["America/Lima", "Asia/Tokyo", "America/New_York", "Pacific/Auckland", "America/Sao_Paulo"]) {
+      assert.equal(dayOf(dayStart("2026-11-14", tz), tz), "2026-11-14", tz);
+      assert.equal(displayEndOf(dayStart("2026-11-15", tz), tz), "2026-11-14", tz);
+    }
+  });
+  it("formatDate/formatDateTime convierten el instante con la zona", () => {
+    assert.equal(formatDate(INSTANT, "America/Lima"), "13/11/2026");
+    assert.equal(formatDate(INSTANT, "Asia/Tokyo"), "14/11/2026");
+    assert.equal(formatDateTime(INSTANT, "Asia/Tokyo"), "14/11/2026 12:00");
+  });
+  it("isValidTimeZone", () => {
+    assert.equal(isValidTimeZone("America/Lima"), true);
+    assert.equal(isValidTimeZone("Mars/Olympus"), false);
+    assert.equal(isValidTimeZone(""), false);
+    assert.equal(isValidTimeZone(null), false);
   });
 });
 
@@ -157,7 +194,7 @@ describe("SSOT fechas: cero inlines fuera de lib/format.ts", () => {
   const BANNED: Array<{ re: RegExp; label: string; allow?: (f: string) => boolean }> = [
     { re: /toLocale(Date|Time)?String\s*\(/, label: "toLocale* (usa formatDate/formatDateTime)", allow: (f) => f === ALLOW_FORMAT },
     { re: /Intl\.DateTimeFormat/, label: "Intl.DateTimeFormat", allow: (f) => f === ALLOW_FORMAT },
-    { re: /["']en-CA["']/, label: '"en-CA" (usa todayLima/toISODateUTC)', allow: (f) => f === ALLOW_FORMAT },
+    { re: /["']en-CA["']/, label: '"en-CA" (usa todayIn/dayOf)', allow: (f) => f === ALLOW_FORMAT },
     { re: /["']es-PE["']/, label: '"es-PE" (usa DATE_LOCALE)', allow: (f) => f === ALLOW_FORMAT },
     { re: /timeZone\s*:/, label: "timeZone inline (usa DATE_TIME_ZONE)", allow: (f) => f === ALLOW_FORMAT },
     { re: /\bget(Date|Month|FullYear|UTCFullYear|UTCMonth|UTCDate)\(\)/, label: "getter de Date (usa parseISODate/toISODate*/isoDayToNum)", allow: (f) => f === ALLOW_FORMAT },
@@ -170,6 +207,9 @@ describe("SSOT fechas: cero inlines fuera de lib/format.ts", () => {
     { re: /Date\.UTC\(/, label: "Date.UTC (usa startOfDayUTC/isoDayToNum)", allow: (f) => f === ALLOW_FORMAT },
     { re: /new Date\([^)]*,/, label: "new Date(y,m,…) (usa parseISODate/addMonths)", allow: (f) => f === ALLOW_FORMAT },
     { re: /hour12/, label: "hour12 (usa formatDateTime)", allow: (f) => f === ALLOW_FORMAT },
+    // La BD guarda UTC y el día sale de la zona del tenant: ningún offset ni zona cableada.
+    { re: /America\/Lima/, label: "zona cableada (usa la zona del tenant: sys_store.timezone)", allow: (f) => f === ALLOW_FORMAT || f === "lib/store-settings-actions.ts" || f === "lib/sheet-import.ts" },
+    { re: /-05:00/, label: "offset UTC-5 cableado (usa dayStart(day, tz))", allow: (f) => f === ALLOW_FORMAT },
   ];
 
   function walk(dir: string, out: string[] = []): string[] {

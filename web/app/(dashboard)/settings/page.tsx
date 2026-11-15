@@ -1,10 +1,11 @@
 import { PageHeader } from "@/components/page-header";
 import { connection } from "next/server";
-import { isSupabaseConfigured } from "@/lib/supabase";
+import { isDbConfigured } from "@/lib/surreal";
 import { DEFAULT_SLOTS_PER_SCREEN, getMyStoreRole, requireMyStoreAccess } from "@/lib/tenant";
-import { createServerSupabase } from "@/lib/supabase-server";
+import { getSessionUser } from "@/lib/auth";
 import { TeamPanel } from "./team-panel";
 import { InventoryPanel } from "./inventory-panel";
+import { TimeZonePanel } from "./timezone-panel";
 
 export const instant = false;
 
@@ -22,12 +23,16 @@ export default async function SettingsPage({
   const requestedStore = sp?.store ?? null;
   let activeStoreId: string | null = null;
   let initialSlots = DEFAULT_SLOTS_PER_SCREEN;
-  if (isSupabaseConfigured()) {
+  let initialTimeZone: string | null = null;
+  if (isDbConfigured()) {
     try {
       const { getMyActiveStore } = await import("@/lib/tenant");
       const got = await getMyActiveStore(requestedStore).catch(() => null);
       activeStoreId = got?.active?.id ?? null;
-      if (got?.active) initialSlots = got.active.default_slots_per_screen;
+      if (got?.active) {
+        initialSlots = got.active.default_slots_per_screen;
+        initialTimeZone = got.active.timezone;
+      }
     } catch {
       activeStoreId = null;
     }
@@ -46,8 +51,7 @@ export default async function SettingsPage({
   const myRole = storeId ? await getMyStoreRole(storeId).catch(() => null) : null;
   let myUserId: string | null = null;
   try {
-    const supabase = await createServerSupabase();
-    myUserId = (await supabase.auth.getUser()).data.user?.id ?? null;
+    myUserId = (await getSessionUser())?.id ?? null;
   } catch {
     myUserId = null;
   }
@@ -75,6 +79,13 @@ export default async function SettingsPage({
             initialSlots={initialSlots}
             canEdit={myRole === "owner" || myRole === "admin"}
           />
+          {initialTimeZone && (
+            <TimeZonePanel
+              storeId={storeId}
+              initialTimeZone={initialTimeZone}
+              canEdit={myRole === "owner" || myRole === "admin"}
+            />
+          )}
         </div>
       )}
     </div>

@@ -1,3 +1,5 @@
+import { workflowRows } from "@/lib/order-workflow-reads";
+import { AUTHORIZATION_LABELS, authorizationKind, isAuthorized, materialsCovered, deliveriesCovered, supplierConfirmed, consumesCapacity } from "@/lib/order-workflow";
 // Dashboard Hoy v1 — solo desde la OI (sin facturación).
 // Fuente: io_orders + lines + io_agency_orders + creatives + io_photo_checks.
 // Sin prorrateo inventado más allá de lineal por tiempo solapado; sin
@@ -8,10 +10,15 @@
 // los bloqueos (alerts) y por_certificar viven solo en el Inbox vía
 // buildBriefFacts.
 import { orderStage, orderTiming } from "@/lib/order-stage";
-import { getSupabase } from "@/lib/supabase";
+import { getStore } from "@/lib/stores-db";
+import { countOrders, listChildrenOf, selectInvoices, selectOrders } from "@/lib/orders-store";
+import { listCompanies } from "@/lib/crm-store";
+import { countScreens, listScreensBrief } from "@/lib/screens-store";
 import { normalizeCurrency } from "@/lib/currency";
 import { aggregateCobranza, toBillingInvoice, type BillingInvoice, type CobranzaTotals } from "@/lib/billing-status";
-import { DAY_MS, startOfDayUTC, startOfMonthUTC } from "@/lib/format";
+import { addDays, DAY_MS, dayStartMs, isoDayPart, isoDayToNum, monthFirstISO, todayIn } from "@/lib/format";
+import { getStoreTimeZone } from "@/lib/stores-db";
+import { getScreenCapacities } from "@/lib/availability";
 import { DEFAULT_SLOTS_PER_SCREEN } from "@/lib/store-slots";
 
 export type AlertKind = "sin_om" | "material" | "sin_evidencia" | "termina_sin_relevo";
@@ -92,36 +99,38 @@ function fmtCorta(v: string | null): string {
   return m ? `${m[3]}/${m[2]}` : "—";
 }
 
-export async function getDashboardSnapshot(storeId: string): Promise<DashboardSnapshot> {
-  const db = getSupabase();
-  const now = Date.now();
-  const today00 = startOfDayUTC(now);
+/** Día ISO del tenant → número de día (comparable entre sí; fechas de cabecera son días inclusivos del tenant). */
+function dayNumOf(v: unknown): number | null {
+  const d = isoDayPart(v);
+  return d ? isoDayToNum(d) : null;
+}
 
-  const [{ data: store, count: screensTotal }, { data: screens }, { data: ois, count: oisTotal }, { data: invoices, error: invoiceError }] = await Promise.all([
-    db.from("sys_stores").select("shop_currency").eq("id", storeId).maybeSingle(),
-    db.from("inv_screens").select("id,name", { count: "exact" }).eq("store_id", storeId).eq("is_active", true).limit(500),
-    db
-      .from("io_orders")
-      .select("id,io_number,brand,status,starts_at,ends_at,created_at,advertiser_company_id,billing_company_id,currency", { count: "exact" })
-      .eq("store_id", storeId)
-      .neq("status", "cancelled")
-      .order("starts_at", { ascending: true })
-      .limit(500),
-    db
-      .from("io_invoices")
-      .select("amount_minor,currency,status,issue_date,due_date,payments:io_invoice_payments!io_invoice_payments_same_store_fk(*)")
-      .eq("store_id", storeId)
-      .limit(2000),
+export async function getDashboardSnapshot(storeId: string): Promise<DashboardSnapshot> {
+  const now = Date.now();
+  // Todo el tablero opera en días del TENANT (`sys_store.timezone`), igual que la capacidad y las líneas
+  // (guardadas como instantes UTC): un día/mes en UTC recortaría o desplazaría horas de cada línea.
+  const tz = await getStoreTimeZone(storeId);
+  const todayISO = todayIn(tz, now);
+  const todayNum = isoDayToNum(todayISO);
+  const today00 = dayStartMs(todayISO, tz);
+
+  const [store, screens, screensTotal, ois, oisTotal, invoices] = await Promise.all([
+    getStore(storeId),
+    listScreensBrief(storeId, { activeOnly: true, limit: 500 }),
+    countScreens(storeId, { activeOnly: true }),
+    selectOrders(storeId, { live: true, order: "starts_asc" }),
+    countOrders(storeId, { live: true }),
+    selectInvoices(storeId),
   ]);
-  if (invoiceError) throw new Error(`Cobranza: ${invoiceError.message}`);
   const truncated = (screensTotal ?? 0) > 500 || (oisTotal ?? 0) > 500;
 
-  const currency = normalizeCurrency((store as Record<string, unknown> | null)?.shop_currency ?? "PEN");
+  const currency = normalizeCurrency(store?.shop_currency ?? "PEN");
   const screenRows = ((screens ?? []) as Array<Record<string, unknown>>).map((s) => ({
     id: String(s.id),
     name: String(s.name ?? "—"),
   }));
-  const oiRows = ((ois ?? []) as Array<Record<string, unknown>>).map((o) => ({
+  const oiRows = ois.map((o) => ({
+    ...o,
     id: String(o.id),
     io_number: String(o.io_number ?? "—"),
     brand: (o.brand as string | null) ?? null,
@@ -146,29 +155,14 @@ export async function getDashboardSnapshot(storeId: string): Promise<DashboardSn
     starts_ms: number | null;
     ends_ms: number | null;
   }> = [];
-  let omBy = new Set<string>();
+  const omBy = new Set<string>();
   const creaBy = new Map<string, { any: boolean; pending: boolean }>();
-  let photoBy = new Set<string>();
+  const photoBy = new Set<string>();
   let nameBy = new Map<string, string>();
 
   if (oiIds.length > 0) {
-    const [lines, oms, creas, photos] = await Promise.all([
-      db
-        .from("io_lines")
-        .select("io_id,screen_id,rate_minor,cant_slots,starts_at,ends_at")
-        .eq("store_id", storeId)
-        .in("io_id", oiIds)
-        .limit(2000),
-      db.from("io_agency_orders").select("io_id").eq("store_id", storeId).in("io_id", oiIds).limit(1000),
-      db
-        .from("io_creatives")
-        .select("io_id,qc_status,legal_status")
-        .eq("store_id", storeId)
-        .in("io_id", oiIds)
-        .limit(1000),
-      db.from("io_photo_checks").select("io_id").eq("store_id", storeId).in("io_id", oiIds).limit(1000),
-    ]);
-    lineRows = ((lines.data ?? []) as Array<Record<string, unknown>>).map((l) => ({
+    const { lines, oms, creatives: creas, photos } = await listChildrenOf(storeId, oiIds);
+    lineRows = lines.map((l) => ({
       io_id: String(l.io_id),
       screen_id: String(l.screen_id),
       rate_minor: Number(l.rate_minor ?? 0),
@@ -181,29 +175,19 @@ export async function getDashboardSnapshot(storeId: string): Promise<DashboardSn
       starts_ms: parseMs(l.starts_at),
       ends_ms: parseMs(l.ends_at),
     }));
-    omBy = new Set(
-      ((oms.data ?? []) as Array<Record<string, unknown>>).map((o) => String(o.io_id)),
-    );
-    for (const c of (creas.data ?? []) as Array<Record<string, unknown>>) {
-      const k = String(c.io_id);
-      const prev = creaBy.get(k) ?? { any: false, pending: false };
-      prev.any = true;
-      if (c.qc_status !== "approved" || c.legal_status !== "approved") prev.pending = true;
-      creaBy.set(k, prev);
+    const workflow = await workflowRows(storeId, oiIds);
+    for (const o of oiRows) {
+      const ownLines = lines.filter(l => l.io_id === o.id);
+      if (isAuthorized(o, oms.filter(d => d.io_id === o.id))) omBy.add(o.id);
+      const ready = materialsCovered(ownLines, creas.filter(c => c.io_id === o.id)) && ownLines.every(l => supplierConfirmed(l, workflow.purchases));
+      creaBy.set(o.id, { any: ready, pending: !ready });
+      if (deliveriesCovered(ownLines, workflow.deliveries, photos)) photoBy.add(o.id);
     }
-    photoBy = new Set(
-      ((photos.data ?? []) as Array<Record<string, unknown>>).map((p) => String(p.io_id)),
-    );
     const coIds = [...new Set(oiRows.flatMap((o) => [o.advertiser_id, o.billing_id]).filter(Boolean))] as string[];
     if (coIds.length > 0) {
-      const { data: cos } = await db
-        .from("crm_companies")
-        .select("id,name")
-        .eq("store_id", storeId)
-        .in("id", coIds)
-        .limit(500);
+      const cos = await listCompanies(storeId, coIds);
       nameBy = new Map(
-        ((cos ?? []) as Array<Record<string, unknown>>).map((c) => [
+        cos.map((c) => [
           String(c.id),
           String(c.name ?? "—"),
         ]),
@@ -223,9 +207,9 @@ export async function getDashboardSnapshot(storeId: string): Promise<DashboardSn
 
   // 1. Comprometido mes (prorrateo lineal por tiempo solapado, por moneda)
   // + base mes anterior para el delta (mismo método, ventana previa).
-  const monthStart = startOfMonthUTC(today00);
-  const monthEnd = startOfMonthUTC(monthStart + 32 * DAY_MS);
-  const prevStart = startOfMonthUTC(monthStart - DAY_MS);
+  const monthStart = dayStartMs(monthFirstISO(todayISO, 0), tz);
+  const monthEnd = dayStartMs(monthFirstISO(todayISO, 1), tz);
+  const prevStart = dayStartMs(monthFirstISO(todayISO, -1), tz);
   let comprometido = 0;
   let firmado = 0;
   let draft = 0;
@@ -268,9 +252,8 @@ export async function getDashboardSnapshot(storeId: string): Promise<DashboardSn
   // viven en la orden). Base del delta: misma cartera al cierre del mes
   // anterior (issue_date < monthStart, corte = monthStart).
   const issuedBy = (iso: unknown): number | null => {
-    if (typeof iso !== "string" || !iso) return null;
-    const t = Date.parse(iso.slice(0, 10));
-    return Number.isFinite(t) ? t : null;
+    const day = isoDayPart(iso);
+    return day ? dayStartMs(day, tz) : null;
   };
   const invRows = ((invoices ?? []) as Array<Record<string, unknown>>).map((v) => ({
     inv: toBillingInvoice(v),
@@ -293,46 +276,37 @@ export async function getDashboardSnapshot(storeId: string): Promise<DashboardSn
     }
   }
   const cobranzaByCurrency: Record<string, CobranzaTotals> = {};
-  for (const [c, list] of curGroups) cobranzaByCurrency[c] = aggregateCobranza(list, Math.min(now, monthEnd));
+  for (const [c, list] of curGroups) cobranzaByCurrency[c] = aggregateCobranza(list, Math.min(now, monthEnd), tz);
   const prevByCurrency: Record<string, CobranzaTotals> = {};
   // Corte al cierre del mes anterior: lo vencido después no contaba aún.
-  for (const [c, list] of prevGroups) prevByCurrency[c] = aggregateCobranza(list, monthStart);
+  for (const [c, list] of prevGroups) prevByCurrency[c] = aggregateCobranza(list, monthStart, tz);
 
   // 2. Ocupación 14d en slots-día (capacidad por pantalla × ventana).
   // Pondera cada línea por su cant_slots; la capacidad es slots propios
   // activos o el default del tenant (SSOT lib/availability).
   // Misma vigencia que la matriz: excluye borradores vencidos (el hold aparta
-  // 7 días); bookings no entran al KPI (ver matriz).
+  // reservas explícitas vigentes); bookings no entran al KPI (ver matriz).
   const WIN = 14;
-  const winEnd = today00 + WIN * DAY_MS;
-  let holdFresh: (createdAt: string | null) => boolean = () => true;
-  try {
-    const { isHoldFresh } = await import("@/lib/availability");
-    holdFresh = (c) => isHoldFresh(c);
-  } catch {
-    // sin filtro de frescura
-  }
-  let capacities: Map<string, number> = new Map();
-  try {
-    const { getScreenCapacities } = await import("@/lib/availability");
-    capacities = await getScreenCapacities(storeId, screenRows.map((s) => s.id));
-  } catch {
-    capacities = new Map();
-  }
+  const winEnd = dayStartMs(addDays(todayISO, WIN), tz);
+  // Sin red de seguridad: si la capacidad falla, el tablero falla (nunca un 10 inventado en silencio).
+  const capacities = await getScreenCapacities(storeId, screenRows.map((s) => s.id));
   const capOf = (id: string): number => capacities.get(id) ?? DEFAULT_SLOTS_PER_SCREEN;
+  // Solo pantallas activas: numerador y denominador sobre el mismo universo (nunca > 100%).
+  const activeScreens = new Set(screenRows.map((s) => s.id));
   const perScreen = new Map<string, Set<number>>();
   const soldByScreen = new Map<string, number>();
   for (const l of lineRows) {
     if (l.starts_ms === null || l.ends_ms === null || l.ends_ms <= l.starts_ms) continue;
+    if (!activeScreens.has(l.screen_id)) continue;
     const io = oiById.get(l.io_id);
-    if (io?.status === "draft" && !holdFresh(io.created_at ?? null)) continue;
+    if (!io || !consumesCapacity(io, now)) continue;
     const s = Math.max(l.starts_ms, today00);
     const e = Math.min(l.ends_ms, winEnd);
     if (e <= s) continue;
     for (let d = 0; d < WIN; d++) {
-      const dayStart = today00 + d * DAY_MS;
-      const dayEnd = dayStart + DAY_MS;
-      if (s < dayEnd && dayStart < e) {
+      const dayFrom = dayStartMs(addDays(todayISO, d), tz);
+      const dayEnd = dayStartMs(addDays(todayISO, d + 1), tz);
+      if (s < dayEnd && dayFrom < e) {
         let set = perScreen.get(l.screen_id);
         if (!set) {
           set = new Set();
@@ -353,7 +327,7 @@ export async function getDashboardSnapshot(storeId: string): Promise<DashboardSn
   const stageAt = (o: (typeof oiRows)[number], ref: number) => orderStage({
     status: o.status, signed: o.status === "signed", hasOm: omBy.has(o.id),
     materialsOk: materialsOk(o.id), certified: photoBy.has(o.id),
-    ...orderTiming(o, lineRows.filter((l) => l.io_id === o.id), ref),
+    ...orderTiming(o, lineRows.filter((l) => l.io_id === o.id), ref, tz),
   }).stage;
   const alAireAt = (ref: number): typeof oiRows => oiRows.filter((o) => stageAt(o, ref) === "al_aire");
   const alAireOis = alAireAt(now);
@@ -364,32 +338,33 @@ export async function getDashboardSnapshot(storeId: string): Promise<DashboardSn
   ).map((l) => l.screen_id));
   const porCertificar = oiRows.filter((o) => stageAt(o, now) === "por_certificar").length;
 
-  // 5. Renovación 30d por anunciante (advertiser ?? billing).
+  // 5. Renovación 30d por anunciante (advertiser ?? billing): órdenes FIRMADAS que terminan en
+  // los próximos 30 días (un borrador aún no vendido no "vence"); el relevo puede ser cualquier
+  // orden vigente (también borrador) del mismo anunciante que empiece después del fin.
   const in30 = oiRows.filter((o) => {
-    const e = parseMs(o.ends_at);
-    return e !== null && e >= today00 && e <= today00 + 30 * DAY_MS;
+    const e = dayNumOf(o.ends_at);
+    return o.status === "signed" && e !== null && e >= todayNum && e <= todayNum + 30;
   });
   const hasRelevo = (o: (typeof oiRows)[number]): boolean => {
     if (!o.key) return false;
-    const e = parseMs(o.ends_at);
+    const e = dayNumOf(o.ends_at);
     if (e === null) return false;
     return oiRows.some((other) => {
       if (other.id === o.id || !other.key || other.key !== o.key) return false;
-      const s2 = parseMs(other.starts_at);
+      const s2 = dayNumOf(other.starts_at);
       return s2 !== null && s2 > e;
     });
   };
   const conRelevo = in30.filter(hasRelevo).length;
 
+  // Días calendario del tenant entre hoy y una fecha de cabecera (inclusiva).
   const daysUntil = (iso: string | null): number | null => {
-    const t = parseMs(iso);
-    if (t === null) return null;
-    return Math.floor((startOfDayUTC(t) - today00) / DAY_MS);
+    const d = dayNumOf(iso);
+    return d === null ? null : d - todayNum;
   };
   const daysSinceStart = (iso: string | null): number | null => {
-    const t = parseMs(iso);
-    if (t === null) return null;
-    return Math.floor((today00 - startOfDayUTC(t)) / DAY_MS);
+    const d = dayNumOf(iso);
+    return d === null ? null : todayNum - d;
   };
 
   const alerts: DashboardAlert[] = [];
@@ -397,6 +372,8 @@ export async function getDashboardSnapshot(storeId: string): Promise<DashboardSn
     const du = daysUntil(o.starts_at);
     const ds = daysSinceStart(o.starts_at);
     const co = companyOf(o);
+    const doc = authorizationKind(o);
+    const docLabel = doc ? AUTHORIZATION_LABELS[doc] : "autorización comercial";
     if (o.status === "signed" && !omBy.has(o.id) && du !== null && du <= 7) {
       alerts.push({
         kind: "sin_om",
@@ -406,15 +383,15 @@ export async function getDashboardSnapshot(storeId: string): Promise<DashboardSn
         company: co,
         detail:
           du < 0
-            ? `Empezó hace ${Math.abs(du)}d y sigue sin OM — no se puede facturar.`
+            ? `Empezó hace ${Math.abs(du)}d y sigue sin ${docLabel} de la versión vigente.`
             : du === 0
-              ? `Empieza hoy y no tiene OM registrado.`
-              : `Empieza en ${du}d y no tiene OM registrado.`,
+              ? `Empieza hoy y falta ${docLabel} de la versión vigente.`
+              : `Empieza en ${du}d y falta ${docLabel} de la versión vigente.`,
         startsAt: o.starts_at,
         endsAt: o.ends_at,
       });
     }
-    const ended = orderTiming(o, lineRows.filter((l) => l.io_id === o.id), now).ended;
+    const ended = orderTiming(o, lineRows.filter((l) => l.io_id === o.id), now, tz).ended;
     if (o.status === "signed" && !materialsOk(o.id) && !ended && du !== null && du <= 5) {
       alerts.push({
         kind: "material",
@@ -424,8 +401,8 @@ export async function getDashboardSnapshot(storeId: string): Promise<DashboardSn
         company: co,
         detail:
           du < 0
-            ? `Salida atrasada: sin material registrado; registra la URL para emitir.`
-            : `Empieza en ${du}d sin material registrado.`,
+            ? `Salida atrasada: sin materiales aprobados o compra externa confirmada.`
+            : `Empieza en ${du}d sin materiales aprobados o compra externa confirmada.`,
         startsAt: o.starts_at,
         endsAt: o.ends_at,
       });

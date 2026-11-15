@@ -12,7 +12,7 @@ import type { MemberRole } from "@/lib/roles";
 import { connection } from "next/server";
 import { ContactsList } from "./contacts-list";
 
-// Request-time: usa el cliente Supabase (timers/Date internos) en el render.
+// Request-time: lee sesión (cookies) y DB por request.
 // Cache Components no lo difiere con `instant = false`; ver nota en
 // app/(dashboard)/page.tsx.
 export const instant = false;

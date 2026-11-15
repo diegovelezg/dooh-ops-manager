@@ -1,10 +1,11 @@
 import { connection } from "next/server";
 import { AppCardState } from "@/components/app-card";
 import { PageHeader } from "@/components/page-header";
-import { isSupabaseConfigured } from "@/lib/supabase";
+import { isDbConfigured } from "@/lib/surreal";
 import { requireMyStoreAccess, resolveActiveStoreId } from "@/lib/tenant";
+import { getStoreTimeZone } from "@/lib/stores-db";
 import { getPeriodAvailability, type PeriodAvailability } from "@/lib/availability";
-import { addDays, isValidISODate, todayLima } from "@/lib/format";
+import { addDays, isValidISODate, todayIn } from "@/lib/format";
 import { resolveSupplierDefault } from "@/lib/default-supplier";
 import { listScreens, listScreenFilterOptions } from "@/lib/screens-db";
 import { OccupancyTimeline } from "./occupancy-timeline";
@@ -24,8 +25,6 @@ export default async function OcupacionPage({
 }) {
   await connection();
   const sp = await searchParams;
-  const today = todayLima();
-  const desde = validDay(sp.desde?.trim(), today);
   const diasRaw = Number.parseInt(sp.dias ?? "14", 10);
   const dias = [7, 14, 28].includes(diasRaw) ? diasRaw : 14;
   const q = (sp.q ?? "").trim();
@@ -41,7 +40,7 @@ export default async function OcupacionPage({
   const rawProveedor = (sp.proveedor ?? "").trim().toLowerCase();
   const explicitProveedor = !hasProveedorParam || rawProveedor === "" ? null : rawProveedor;
 
-  const dbReady = isSupabaseConfigured();
+  const dbReady = isDbConfigured();
   const activeStoreId = await resolveActiveStoreId();
   const connected = Boolean(activeStoreId);
 
@@ -59,6 +58,8 @@ export default async function OcupacionPage({
   }
 
   const storeId = activeStoreId!;
+  const tz = await getStoreTimeZone(storeId);
+  const desde = validDay(sp.desde?.trim(), todayIn(tz));
   if ((await requireMyStoreAccess(storeId).catch(() => null)) === false) {
     return (
       <div className="page-shell max-w-[1200px]">

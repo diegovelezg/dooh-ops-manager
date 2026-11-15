@@ -7,10 +7,11 @@ import { ChatDockProvider, DashboardShell } from "@/components/chat/chat-dock";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { AppTooltipProvider } from "@/components/ui/app-tooltip";
 import { displayStoreName, listMyStores, getMyStoreRoles, resolveActiveStoreId, type TenantStore } from "@/lib/tenant";
-import { createServerSupabase } from "@/lib/supabase-server";
+import { getSessionUser } from "@/lib/auth";
 
 import { connection } from "next/server";
 import { DrawerHost } from "@/components/drawer-host";
+import { TenantTimeProvider } from "@/components/tenant-time";
 
 // La chrome del dashboard es siempre dinámica (auth + tenant por request),
 // así que se permite la ruta bloqueante. Sin esto, el `connection()` de
@@ -23,7 +24,7 @@ export const instant = false;
 // Siempre dinámico: UI autenticada multiuser por tenant (cookies + membresía
 // por request). `connection()` detiene el prerender aquí (Cache Components);
 // sin esto, Next intenta prerenderizar "/" y falla con
-// `blocking-prerender-current-time` (el cliente Supabase usa timers/Date).
+// `blocking-prerender-current-time`.
 
 // El layout carga tiendas (single-país: sin filtro por market);
 // si falla, el header sigue funcionando.
@@ -42,9 +43,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
   let userEmail: string | null = null;
   let userRoles: Record<string, import("@/lib/roles").MemberRole> = {};
   try {
-    const supabase = await createServerSupabase();
-    const { data } = await supabase.auth.getUser();
-    userEmail = data.user?.email ?? null;
+    userEmail = (await getSessionUser())?.email ?? null;
   } catch {
     userEmail = null;
   }
@@ -57,8 +56,10 @@ export default async function DashboardLayout({ children }: { children: ReactNod
   // Rol para los drawers del host central (misma resolución que las páginas).
   const activeStoreId = await resolveActiveStoreId().catch(() => null);
   const myRole = activeStoreId ? (userRoles[activeStoreId] ?? null) : null;
+  const tz = stores.find((s) => s.id === activeStoreId)?.timezone ?? null;
   return (
     <BackgroundStatus>
+      <TenantTimeProvider tz={tz}>
       <SidebarProvider defaultOpen={false}>
         <ChatDockProvider stores={stores.map((s) => ({ id: s.id, label: displayStoreName(s) }))}>
           <AppTooltipProvider>
@@ -73,6 +74,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
           </AppTooltipProvider>
         </ChatDockProvider>
       </SidebarProvider>
+      </TenantTimeProvider>
     </BackgroundStatus>
   );
 }

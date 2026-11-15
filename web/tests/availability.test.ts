@@ -46,18 +46,18 @@ describe("isHoldFresh (borrador aparta HOLD_DAYS)", () => {
 
 describe("bordes de periodo UI ↔ BD", () => {
   it("periodBounds: fin inclusivo → exclusivo día siguiente Lima", () => {
-    const { qStart, qEnd } = periodBounds("2026-11-03", "2026-11-24");
-    assert.equal(qStart, "2026-11-03T00:00:00-05:00");
-    assert.equal(qEnd, "2026-11-25T00:00:00-05:00");
+    const { qStart, qEnd } = periodBounds("2026-11-03", "2026-11-24", "America/Lima");
+    assert.equal(qStart, "2026-11-03T05:00:00.000Z");
+    assert.equal(qEnd, "2026-11-25T05:00:00.000Z");
   });
   it("displayEndOf: fin exclusivo → día inclusivo", () => {
-    assert.equal(displayEndOf("2026-11-25T00:00:00-05:00"), "2026-11-24");
+    assert.equal(displayEndOf("2026-11-25T00:00:00-05:00", "America/Lima"), "2026-11-24");
   });
   it("fecha inválida lanza, nunca {} libre (issue #5 P0)", () => {
-    assert.throws(() => periodBounds("nonsense", "2026-11-24"), /Fecha inválida/);
-    assert.throws(() => periodBounds("2026-11-03", "no-fecha"), /Fecha inválida/);
-    assert.throws(() => periodBounds("2026-11-24", "2026-11-03"), /Rango inválido/);
-    assert.throws(() => displayEndOf("NaN-nada"), /Fecha inválida/);
+    assert.throws(() => periodBounds("nonsense", "2026-11-24", "America/Lima"), /Fecha inválida/);
+    assert.throws(() => periodBounds("2026-11-03", "no-fecha", "America/Lima"), /Fecha inválida/);
+    assert.throws(() => periodBounds("2026-11-24", "2026-11-03", "America/Lima"), /Rango inválido/);
+    assert.throws(() => displayEndOf("NaN-nada", "America/Lima"), /Fecha inválida/);
   });
 });
 

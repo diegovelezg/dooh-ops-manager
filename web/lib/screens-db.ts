@@ -1,15 +1,11 @@
-// Lecturas de inventario DOOH (service_role). Escrituras vía Sheet/CSV en dooh-import.
+// Lecturas de inventario DOOH sobre SurrealDB (identidad de servidor; aislamiento
+// por `WHERE store = $store`). Escrituras vía Sheet/CSV en dooh-import y screens-actions.
 //
-// Búsqueda: RPC `inv_search_screens` (pg_trgm + unaccent, ranking por
-// similitud, paginación real en Postgres) en un solo roundtrip.
-// Si el RPC no existe (migración pendiente), fallback al filtro JS
-// normalizado — nunca rompe el deploy.
-import { getSupabase, isSupabaseMissingFunction } from "@/lib/supabase";
+// Búsqueda: `fn::tokens` / `fn::match_all` / `fn::match_score` (migración 0003) sobre
+// el campo COMPUTED `search` (pantalla + venue + proveedor): un solo roundtrip con
+// ranking, tolerancia a tildes/typos y paginación real con total exacto.
+import { surql } from "@/lib/surreal";
 import { SCREENS_SORT_ALIASES } from "@/lib/sort";
-import { joinHaystack, matchTokens, normalizeSearch, tokenizeSearch } from "@/lib/search-text";
-
-// Re-export de compatibilidad (tests y otros módulos consumen desde aquí).
-export { normalizeSearch, tokenizeSearch };
 
 export interface ScreenListRow {
   id: string;
@@ -58,30 +54,13 @@ export interface ScreensFilter {
   pageSize?: number;
 }
 
-/** Haystack normalizado de una fila (mismos campos que indexa el RPC). */
-export function screenHaystack(s: {
-  name?: unknown;
-  district?: unknown;
-  city?: unknown;
-  venue_name?: unknown;
-  supplier_name?: unknown;
-  external_ref?: unknown;
-}): string {
-  return joinHaystack([s.name, s.district, s.city, s.venue_name, s.supplier_name, s.external_ref]);
-}
-
-/** ¿La fila contiene TODOS los tokens? (fallback JS cuando no hay RPC). */
-export function matchScreenTokens(haystackNormalized: string, tokens: string[]): boolean {
-  return matchTokens(haystackNormalized, tokens);
-}
-
 function num(v: unknown): number | null {
   if (v === null || v === undefined) return null;
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
 }
 
-function mapRpcRow(r: Record<string, unknown>): ScreenListRow {
+function mapRow(r: Record<string, unknown>): ScreenListRow {
   return {
     id: String(r.id),
     name: String(r.name ?? ""),
@@ -96,181 +75,112 @@ function mapRpcRow(r: Record<string, unknown>): ScreenListRow {
     district: (r.district as string | null) ?? null,
     city: (r.city as string | null) ?? null,
     venue_name: (r.venue_name as string | null) ?? null,
-    supplier_id: (r.supplier_company_id as string | null) ?? null,
+    supplier_id: (r.supplier_id as string | null) ?? null,
     supplier_name: (r.supplier_name as string | null) ?? null,
     external_ref: (r.external_ref as string | null) ?? null,
   };
 }
 
-/** Alias local del detector compartido (`@/lib/supabase`). */
-const isMissingFunction = isSupabaseMissingFunction;
+/** Orden por clave; los nulos van al final (como `nulls last`). */
+const SCREEN_ORDER: Record<ScreensSortKey, (d: string) => string> = {
+  name: (d) => `name_key ${d}`,
+  supplier: (d) => `supplier_missing ASC, supplier_key ${d}, name_key ASC`,
+  city: (d) => `city_missing ASC, city_key ${d}, name_key ASC`,
+  impact: (d) => `impact_missing ASC, impact_day ${d}, name_key ASC`,
+  price: (d) => `price_missing ASC, price_pen ${d}, name_key ASC`,
+};
 
 export async function listScreens(
   storeId: string,
   opts: ScreensFilter = {},
 ): Promise<{ rows: ScreenListRow[]; total: number; truncated?: boolean }> {
-  const db = getSupabase();
   const pageSize = Math.min(Math.max(opts.pageSize ?? 20, 1), 100);
   const page = Math.max(1, opts.page ?? 1);
   const sortKey = opts.sortKey ?? "name";
-  const sortDir = opts.sortDir ?? "asc";
+  const dir = (opts.sortDir ?? "asc") === "desc" ? "DESC" : "ASC";
   const q = (opts.q ?? "").trim();
-
-  // Red propia (ownOnly) no la expresa el RPC ($2 NULL = sin filtro):
-  // se resuelve por la vía legacy con IS NULL en la query (paginado real).
-  if (!opts.ownOnly) {
-    const rpc = await db.rpc("inv_search_screens", {
-      p_store: storeId,
-      p_q: q || null,
-      p_supplier: opts.supplierId ?? null,
-      p_city: (opts.city ?? "").trim() || null,
-      p_active: opts.active ?? "all",
-      p_sort: sortKey,
-      p_dir: sortDir,
-      p_limit: pageSize,
-      p_offset: (page - 1) * pageSize,
-    });
-    if (!rpc.error) {
-      const data = (rpc.data ?? []) as Array<Record<string, unknown>>;
-      const total = data.length > 0 ? Number(data[0].total ?? 0) : 0;
-      return { rows: data.map(mapRpcRow), total: Number.isFinite(total) ? total : 0 };
-    }
-    if (!isMissingFunction(rpc.error as { code?: string; message?: string })) {
-      throw new Error(`Screens read: ${(rpc.error as { message?: string }).message ?? rpc.error}`);
-    }
-  }
-
-  // Fallback pre-migración: mismos campos y normalización, paginación honesta
-  // sobre la muestra (límite documentado, no total mentiroso a escala).
-  return listScreensLegacy(storeId, { ...opts, pageSize, page, sortKey, sortDir, q });
-}
-
-const LEGACY_COLUMNS =
-  "id,name,is_active,width_px,height_px,width_m,height_m,price_pen,impact_day,impressions_day,supplier_company_id,external_ref,inv_venues!screens_venue_id_fkey!inner(name,district,city)";
-
-async function listScreensLegacy(
-  storeId: string,
-  opts: ScreensFilter & { pageSize: number; page: number; sortKey: ScreensSortKey; sortDir: ScreensSortDir; q: string },
-): Promise<{ rows: ScreenListRow[]; total: number; truncated: boolean }> {
-  const db = getSupabase();
-  const { pageSize, page, sortKey, sortDir } = opts;
-  const asc = sortDir === "asc";
-
-  let countQuery = db.from("inv_screens").select("id", { count: "exact", head: true }).eq("store_id", storeId);
-  if (opts.ownOnly) countQuery = countQuery.is("supplier_company_id", null);
-  else if (opts.supplierId) countQuery = countQuery.eq("supplier_company_id", opts.supplierId);
-  if (opts.active === "active") countQuery = countQuery.eq("is_active", true);
-  else if (opts.active === "inactive") countQuery = countQuery.eq("is_active", false);
-
-  let query = db.from("inv_screens").select(LEGACY_COLUMNS).eq("store_id", storeId).limit(500);
-  if (opts.ownOnly) query = query.is("supplier_company_id", null);
-  else if (opts.supplierId) query = query.eq("supplier_company_id", opts.supplierId);
-  if (opts.active === "active") query = query.eq("is_active", true);
-  else if (opts.active === "inactive") query = query.eq("is_active", false);
-  // Orden servido por Supabase solo en columnas propias; supplier/city se ordenan en JS.
-  if (sortKey === "name") query = query.order("name", { ascending: asc });
-  else if (sortKey === "impact") query = query.order("impact_day", { ascending: asc, nullsFirst: false });
-  else if (sortKey === "price") query = query.order("price_pen", { ascending: asc, nullsFirst: false });
-  else query = query.order("name", { ascending: true });
-
-  const { data, error } = await query;
-  if (error) throw new Error(`Screens read: ${error.message}`);
-  const { count: baseTotal, error: countError } = await countQuery;
-  if (countError) throw new Error(`Screens read: ${countError.message}`);
-  let out = ((data ?? []) as Array<Record<string, unknown>>).map((r) => {
-    const venue = (r.inv_venues ?? null) as { name?: unknown; district?: unknown; city?: unknown } | null;
-    return {
-      id: String(r.id),
-      name: String(r.name ?? ""),
-      is_active: r.is_active === true,
-      width_px: num(r.width_px),
-      height_px: num(r.height_px),
-      width_m: num(r.width_m),
-      height_m: num(r.height_m),
-      price_pen: num(r.price_pen),
-      impact_day: num(r.impact_day),
-      impressions_day: num(r.impressions_day),
-      district: (venue?.district as string | null) ?? null,
-      city: (venue?.city as string | null) ?? null,
-      venue_name: (venue?.name as string | null) ?? null,
-      supplier_id: (r.supplier_company_id as string | null) ?? null,
-      supplier_name: null as string | null,
-      external_ref: (r.external_ref as string | null) ?? null,
-    };
-  });
-  // Nombres de proveedores en batch (sin embed PostgREST).
-  const supIds = [...new Set(out.map((s) => s.supplier_id).filter((v): v is string => !!v))];
-  if (supIds.length > 0) {
-    const { data: sups, error: supError } = await db
-      .from("crm_companies")
-      .select("id,name")
-      .eq("store_id", storeId)
-      .in("id", supIds);
-    if (supError) throw new Error(`Screens read: ${supError.message}`);
-    const byId = new Map(
-      ((sups ?? []) as Array<Record<string, unknown>>).map((c) => [String(c.id), String(c.name ?? "")]),
-    );
-    out = out.map((s) => ({ ...s, supplier_name: s.supplier_id ? (byId.get(s.supplier_id) ?? null) : null }));
-  }
-
-  // Filtro de texto normalizado (tildes/espacios) con AND de tokens.
-  const tokens = tokenizeSearch(opts.q);
-  if (tokens.length > 0) {
-    out = out.filter((s) => matchScreenTokens(screenHaystack(s), tokens));
-  }
-  if (opts.city) {
-    const want = normalizeSearch(opts.city);
-    out = out.filter((s) => normalizeSearch(s.city) === want);
-  }
-  if (sortKey === "supplier") {
-    out.sort((a, b) =>
-      asc
-        ? (a.supplier_name ?? "").localeCompare(b.supplier_name ?? "", "es")
-        : (b.supplier_name ?? "").localeCompare(a.supplier_name ?? "", "es"),
-    );
-  } else if (sortKey === "city") {
-    out.sort((a, b) =>
-      asc ? (a.city ?? "").localeCompare(b.city ?? "", "es") : (b.city ?? "").localeCompare(a.city ?? "", "es"),
-    );
-  }
-
-  const sampleFilled = (data?.length ?? 0) >= 500;
-  const hasJsFilter = tokens.length > 0 || !!opts.city || sortKey === "supplier" || sortKey === "city";
-  // Total exacto cuando no hay filtro JS (conteo en BD); con filtro JS el
-  // total vale sobre la muestra y `truncated` lo declara (la UI pinta parcial).
-  const total = hasJsFilter ? out.length : (baseTotal ?? out.length);
-  const from = (page - 1) * pageSize;
-  // Muestra de 500: si se llenó, hay más filas fuera (truncated honesto).
-  const truncated = sampleFilled;
-  return { rows: out.slice(from, from + pageSize), total, truncated };
+  // Con texto y orden por nombre asc manda la relevancia (relevancia primero).
+  const order = q && sortKey === "name" && dir === "ASC" ? "score DESC, name_key ASC" : SCREEN_ORDER[sortKey](dir);
+  const result = await surql<{ total: number; rows: Array<Record<string, unknown>> }>(
+    `LET $tokens = fn::tokens($q);
+     LET $qn = fn::norm($q);
+     LET $cityKey = IF $city { fn::norm($city) } ELSE { NONE };
+     LET $m = SELECT record::id(id) AS id, name, is_active, width_px, height_px, width_m, height_m, price_pen,
+         impact_day, impressions_day, external_ref,
+         venue.district AS district, venue.city AS city, venue.name AS venue_name,
+         IF supplier { record::id(supplier) } ELSE { NONE } AS supplier_id, supplier.name AS supplier_name,
+         fn::norm(name) AS name_key,
+         fn::norm(supplier.name) AS supplier_key, supplier = NONE AS supplier_missing,
+         fn::norm(venue.city) AS city_key, venue.city = NONE AS city_missing,
+         impact_day = NONE AS impact_missing, price_pen = NONE AS price_missing,
+         fn::match_score(fn::norm(name), search, $qn) AS score
+       FROM inv_screen
+       WHERE store = type::record('sys_store', $store)
+         AND ($supplier = NONE OR supplier = type::record('crm_company', $supplier))
+         AND ($own = false OR supplier = NONE)
+         AND ($cityKey = NONE OR fn::norm(venue.city) = $cityKey)
+         AND ($active = 'all' OR ($active = 'active' AND is_active = true) OR ($active = 'inactive' AND is_active != true))
+         AND fn::match_all(search, $tokens);
+     RETURN {
+       total: array::len($m),
+       rows: (SELECT * FROM $m ORDER BY ${order} LIMIT $limit START $offset)
+     };`,
+    {
+      store: storeId,
+      q,
+      supplier: opts.supplierId ?? undefined,
+      own: Boolean(opts.ownOnly),
+      city: (opts.city ?? "").trim() || undefined,
+      active: opts.active ?? "all",
+      limit: pageSize,
+      offset: (page - 1) * pageSize,
+    },
+  );
+  return { rows: result.rows.map(mapRow), total: result.total };
 }
 
 /** Opciones para los filtros (proveedores y ciudades con inventario). */
 export async function listScreenFilterOptions(
   storeId: string,
 ): Promise<{ suppliers: Array<{ id: string; name: string }>; cities: string[]; truncated: boolean }> {
-  const db = getSupabase();
-  const [{ data: venues, count: venuesTotal }, { data: companies, count: companiesTotal }] = await Promise.all([
-    db.from("inv_venues").select("city", { count: "exact" }).eq("store_id", storeId).limit(2000),
-    db.from("crm_companies").select("id,name", { count: "exact" }).eq("store_id", storeId).eq("kind", "proveedor").order("name").limit(200),
-  ]);
-  const truncated = (venuesTotal ?? 0) > 2000 || (companiesTotal ?? 0) > 200;
-  const cities = [
-    ...new Set(
-      ((venues ?? []) as Array<Record<string, unknown>>)
-        .map((r) => (typeof r.city === "string" ? r.city.trim() : ""))
-        .filter((c) => c !== ""),
+  const SUPPLIER_LIMIT = 200;
+  const [cities, suppliers, total] = await Promise.all([
+    surql<string[]>(
+      `SELECT VALUE city FROM inv_venue WHERE store = type::record('sys_store', $store) AND city != NONE GROUP BY city`,
+      { store: storeId },
     ),
-  ].sort((a, b) => a.localeCompare(b, "es"));
+    surql<Array<{ id: string; name: string }>>(
+      `SELECT record::id(id) AS id, name FROM crm_company
+       WHERE store = type::record('sys_store', $store) AND kind = 'proveedor' ORDER BY name ASC LIMIT $limit`,
+      { store: storeId, limit: SUPPLIER_LIMIT },
+    ),
+    surql<number[]>(
+      `SELECT VALUE count() FROM crm_company WHERE store = type::record('sys_store', $store) AND kind = 'proveedor' GROUP ALL`,
+      { store: storeId },
+    ),
+  ]);
   return {
-    suppliers: ((companies ?? []) as Array<Record<string, unknown>>).map((c) => ({
-      id: String(c.id),
-      name: String(c.name ?? ""),
-    })),
-    cities,
-    truncated,
+    suppliers: suppliers.map((c) => ({ id: c.id, name: String(c.name ?? "") })),
+    cities: cities.map((c) => c.trim()).filter((c) => c !== "").sort((a, b) => a.localeCompare(b, "es")),
+    truncated: (total[0] ?? 0) > SUPPLIER_LIMIT,
   };
 }
+
+/** Pantalla completa como DTO de la app (ids planos, fechas ISO). Sin el embedding (pesado). */
+export const SCREEN_FULL = `SELECT *, record::id(id) AS id, record::id(store) AS store_id, record::id(venue) AS venue_id,
+  IF supplier { record::id(supplier) } ELSE { NONE } AS supplier_company_id,
+  fn::iso(created_at) AS created_at, fn::iso(updated_at) AS updated_at,
+  embedding != NONE AS has_embedding
+  OMIT store, venue, supplier, embedding, search`;
+
+/** Venue completo como DTO de la app: `latitude`/`longitude` salen del punto geoespacial. */
+export const VENUE_FULL = `SELECT *, record::id(id) AS id, record::id(store) AS store_id,
+  IF company { record::id(company) } ELSE { NONE } AS company_id,
+  IF supplier { record::id(supplier) } ELSE { NONE } AS supplier_company_id,
+  IF location { location.coordinates[1] } ELSE { NONE } AS latitude,
+  IF location { location.coordinates[0] } ELSE { NONE } AS longitude,
+  fn::iso(created_at) AS created_at, fn::iso(updated_at) AS updated_at
+  OMIT store, company, supplier, location, search`;
 
 export interface ScreenDetail {
   screen: Record<string, unknown>;
@@ -282,49 +192,53 @@ export interface ScreenDetail {
   lines_count: number;
 }
 
-export async function getScreenDetail(storeId: string, screenId: string): Promise<ScreenDetail | null> {
-  const db = getSupabase();
-  const { data, error } = await db
-    .from("inv_screens")
-    .select("*, inv_venues!screens_venue_id_fkey(*)")
-    .eq("store_id", storeId)
-    .eq("id", screenId)
-    .maybeSingle();
-  if (error) throw new Error(`Screens read: ${error.message}`);
-  if (!data) return null;
-  const row = data as Record<string, unknown>;
-  const venue = (row.inv_venues ?? null) as Record<string, unknown> | null;
-  const screen: Record<string, unknown> = { ...row };
-  delete screen.inv_venues;
-  const screenIdStr = String(screen.id);
-  const supplierId = (screen.supplier_company_id as string | null) ?? null;
-  // Las reservas cuelgan de slots (inv_bookings.slot_id → inv_slots.id):
-  // inv_bookings NO tiene screen_id (filtrar por ella = 42703 → 500).
-  const { data: slotRows, error: slotErr } = await db
-    .from("inv_slots")
-    .select("id")
-    .eq("store_id", storeId)
-    .eq("screen_id", screenIdStr);
-  if (slotErr) throw new Error(`Screens read: ${slotErr.message}`);
-  const slotIds = ((slotRows ?? []) as Array<Record<string, unknown>>).map((s) => String(s.id));
-  const [{ count: bookings }, { count: lines }, { data: emb }, supRes] = await Promise.all([
-    slotIds.length > 0
-      ? db.from("inv_bookings").select("id", { count: "exact", head: true }).eq("store_id", storeId).in("slot_id", slotIds)
-      : Promise.resolve({ count: 0 as number | null }),
-    db.from("io_lines").select("id", { count: "exact", head: true }).eq("store_id", storeId).eq("screen_id", screenIdStr),
-    db.from("inv_screen_embeddings").select("model").eq("screen_id", screenIdStr).maybeSingle(),
-    supplierId
-      ? db.from("crm_companies").select("name").eq("store_id", storeId).eq("id", supplierId).maybeSingle()
-      : Promise.resolve({ data: null }),
-  ]);
-  const supName = supRes?.data ? String((supRes.data as Record<string, unknown>).name ?? "") || null : null;
+/** Pantalla + ubicación + proveedor + estado del embedding (todo SurrealDB). */
+export async function getScreenRecord(
+  storeId: string,
+  screenId: string,
+): Promise<Pick<ScreenDetail, "screen" | "venue" | "supplier_name" | "has_embedding" | "embedding_model"> | null> {
+  const found = await surql<{
+    screen: Record<string, unknown>;
+    venue: Record<string, unknown> | null;
+    supplier_name: string | null;
+    embedding_model: string | null;
+  } | null>(
+    `LET $s = (${SCREEN_FULL} FROM inv_screen WHERE store = type::record('sys_store', $store) AND id = type::record('inv_screen', $id))[0];
+     RETURN IF $s {
+       {
+         screen: $s,
+         venue: (${VENUE_FULL} FROM inv_venue WHERE id = type::record('inv_venue', $s.venue_id))[0],
+         supplier_name: (SELECT VALUE name FROM crm_company WHERE id = type::record('crm_company', $s.supplier_company_id))[0],
+         embedding_model: (SELECT VALUE embedding_model FROM inv_screen WHERE id = type::record('inv_screen', $id))[0]
+       }
+     } ELSE { NONE };`,
+    { store: storeId, id: screenId },
+  );
+  if (!found) return null;
+  const has_embedding = found.screen.has_embedding === true;
+  delete found.screen.has_embedding;
   return {
-    screen,
-    venue,
-    supplier_name: supName,
-    has_embedding: Boolean(emb),
-    embedding_model: (emb as { model?: unknown } | null)?.model as string | null ?? null,
-    bookings_count: bookings ?? 0,
-    lines_count: lines ?? 0,
+    screen: found.screen,
+    venue: found.venue ?? null,
+    supplier_name: found.supplier_name ?? null,
+    has_embedding,
+    embedding_model: has_embedding ? (found.embedding_model ?? null) : null,
   };
+}
+
+export async function getScreenDetail(storeId: string, screenId: string): Promise<ScreenDetail | null> {
+  const record = await getScreenRecord(storeId, screenId);
+  if (!record) return null;
+  // Las reservas cuelgan de slots (inv_booking.slot → inv_slot) y las líneas referencian la pantalla.
+  const [bookings, lines] = await Promise.all([
+    surql<number[]>(
+      `SELECT VALUE count() FROM inv_booking WHERE store = type::record('sys_store', $store) AND slot.screen = type::record('inv_screen', $id) GROUP ALL`,
+      { store: storeId, id: screenId },
+    ),
+    surql<number[]>(
+      `SELECT VALUE count() FROM io_line WHERE store = type::record('sys_store', $store) AND screen = type::record('inv_screen', $id) GROUP ALL`,
+      { store: storeId, id: screenId },
+    ),
+  ]);
+  return { ...record, bookings_count: bookings[0] ?? 0, lines_count: lines[0] ?? 0 };
 }

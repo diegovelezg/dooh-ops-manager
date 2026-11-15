@@ -8,8 +8,9 @@ import { HistoryBadge, OccupancyBadge, UpcomingBadge } from "@/components/badges
 import { RetryButton } from "@/components/buttons";
 import { Calendar } from "@/components/ui/calendar";
 import { formatDate, formatNumber, parseISODate } from "@/lib/format";
-import { addDays, firstFreeDay, todayLima, type OccupiedRange } from "@/lib/availability-utils";
+import { addDays, firstFreeDay, todayIn, type OccupiedRange } from "@/lib/availability-utils";
 import { DEFAULT_SLOTS_PER_SCREEN } from "@/lib/store-slots";
+import { useTz } from "@/components/tenant-time";
 
 interface OccupancyItem {
   starts: string;
@@ -51,6 +52,7 @@ function statusLabel(it: OccupancyItem): string {
 }
 
 export function PantallaOcupacion({ screenId }: { screenId: string }) {
+  const tz = useTz();
   const [data, setData] = useState<OccupancyData | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -112,7 +114,7 @@ export function PantallaOcupacion({ screenId }: { screenId: string }) {
   const items = data.items;
   const capacity = data.capacity ?? DEFAULT_SLOTS_PER_SCREEN;
   const remainingByDay = data.remainingByDay ?? {};
-  const today = todayLima();
+  const today = todayIn(tz);
   const horizonEnd = addDays(today, 29);
 
   const freeToday = remainingByDay[today] ?? capacity;
@@ -150,7 +152,7 @@ export function PantallaOcupacion({ screenId }: { screenId: string }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <AppCard title="Próximos 30 días" description={`${formatDate(today)} → ${formatDate(horizonEnd)}`} tone="sky" aria-label="Ocupación próximos 30 días">
+      <AppCard title="Próximos 30 días" description={`${formatDate(today, tz)} → ${formatDate(horizonEnd, tz)}`} tone="sky" aria-label="Ocupación próximos 30 días">
         <div className="grid gap-x-6 gap-y-4 sm:grid-cols-3">
           <div className="min-w-0">
             <p className="truncate text-xs text-muted-foreground">Hoy</p>
@@ -161,7 +163,7 @@ export function PantallaOcupacion({ screenId }: { screenId: string }) {
               {todayHit
                 ? [todayHit.io_number, todayHit.brand].filter(Boolean).join(" · ") || todayHit.source
                 : free
-                  ? `Libre desde ${formatDate(free)}`
+                  ? `Libre desde ${formatDate(free, tz)}`
                   : "—"}
               {` · quedan ${formatNumber(Math.max(0, freeToday))} de ${formatNumber(capacity)} slots`}
             </p>
@@ -175,7 +177,7 @@ export function PantallaOcupacion({ screenId }: { screenId: string }) {
           </div>
           <div className="min-w-0">
             <p className="truncate text-xs text-muted-foreground">Libre desde</p>
-            <p className="mt-1 text-2xl font-semibold tracking-tight tabular-nums">{free ? formatDate(free) : "—"}</p>
+            <p className="mt-1 text-2xl font-semibold tracking-tight tabular-nums">{free ? formatDate(free, tz) : "—"}</p>
             <p className="mt-0.5 truncate text-xs text-muted-foreground tabular-nums">
               {next30.length === 0 ? "Todo libre en 30 días" : `${formatNumber(next30.length)} pauta${next30.length === 1 ? "" : "s"} en 30 días`}
             </p>
@@ -220,7 +222,7 @@ export function PantallaOcupacion({ screenId }: { screenId: string }) {
                       {[it.io_number, it.brand].filter(Boolean).join(" · ") || (it.source === "booking" ? "Reserva" : "—")}
                     </span>
                     <span className="block text-xs text-muted-foreground tabular-nums">
-                      {formatDate(it.starts)} → {formatDate(it.ends)} · {formatNumber(it.slots ?? 1)} slot{(it.slots ?? 1) === 1 ? "" : "s"}
+                      {formatDate(it.starts, tz)} → {formatDate(it.ends, tz)} · {formatNumber(it.slots ?? 1)} slot{(it.slots ?? 1) === 1 ? "" : "s"}
                     </span>
                   </span>
                   <span className="flex shrink-0 items-center gap-1.5">
@@ -251,7 +253,7 @@ export function PantallaOcupacion({ screenId }: { screenId: string }) {
                     {[it.io_number, it.brand].filter(Boolean).join(" · ") || (it.source === "booking" ? "Reserva" : "—")}
                   </span>
                   <span className="block text-xs text-muted-foreground tabular-nums">
-                    {formatDate(it.starts)} → {formatDate(it.ends)} · {formatNumber(it.slots ?? 1)} slot{(it.slots ?? 1) === 1 ? "" : "s"}
+                    {formatDate(it.starts, tz)} → {formatDate(it.ends, tz)} · {formatNumber(it.slots ?? 1)} slot{(it.slots ?? 1) === 1 ? "" : "s"}
                   </span>
                 </span>
                 <HistoryBadge label={statusLabel(it)} />

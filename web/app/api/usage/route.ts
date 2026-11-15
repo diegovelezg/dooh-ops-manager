@@ -1,6 +1,7 @@
-import { getSupabase } from "@/lib/supabase";
+import { surql } from "@/lib/surreal";
 import { requireApiUser, requireStoreMember } from "@/lib/api/guard";
-import { isISODateShape, utcDayStart } from "@/lib/format";
+import { dayStart, isISODateShape } from "@/lib/format";
+import { getStoreTimeZone } from "@/lib/stores-db";
 import { apiLog } from "@/lib/log";
 
 /**
@@ -22,14 +23,13 @@ export async function GET(req: Request) {
   const denied = await requireStoreMember(storeId, auth);
   if (denied) return denied;
   try {
-    const db = getSupabase();
-    let query = db.from("ai_llm_usage").select("total_tokens").eq("store_id", storeId);
-    if (from) query = query.gte("created_at", utcDayStart(from));
-    const { data, error } = await query.limit(10000);
-    if (error) throw new Error(error.message);
-    const rows = (data ?? []) as Array<Record<string, unknown>>;
-    const total = rows.reduce((acc, r) => acc + (Number(r.total_tokens ?? 0) || 0), 0);
-    return Response.json({ total_tokens: total, calls: rows.length });
+    // Agregado en la DB (sin tope de 10k filas): suma y conteo exactos.
+    const [agg] = await surql<Array<{ total_tokens: number; calls: number }>>(
+      `SELECT math::sum(total_tokens) AS total_tokens, count() AS calls FROM ai_llm_usage
+       WHERE store = type::record('sys_store', $store) AND ($from = NONE OR created_at >= <datetime> $from) GROUP ALL`,
+      { store: storeId, from: from ? dayStart(from, await getStoreTimeZone(storeId)) : undefined },
+    );
+    return Response.json({ total_tokens: agg?.total_tokens ?? 0, calls: agg?.calls ?? 0 });
   } catch (e) {
     apiLog("usage", "usage fail", { error: e instanceof Error ? e.message : String(e) });
     return Response.json({ error: e instanceof Error ? e.message : "DB read failed." }, { status: 500 });

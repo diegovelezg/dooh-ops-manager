@@ -20,6 +20,7 @@ import type { ScreenConflict } from "@/lib/availability";
 import { parseSlotsInput } from "@/lib/order-lines";
 import type { ScreenPick } from "./types";
 import { plural } from "./types";
+import { useTz } from "@/components/tenant-time";
 
 /** Tabla de pantallas ya agregadas: precio/día y slots editables, días, subtotal.
  *  Subtotal = precio/día × días × slots (default 1 slot por línea).
@@ -65,6 +66,7 @@ export function OrderScreensTable({
   disabled?: boolean;
   pending?: boolean;
 }) {
+  const tz = useTz();
   const priceOf = (id: string) => {
     const n = Number(String(prices[id] ?? "").replace(",", "."));
     return Number.isFinite(n) && n > 0 ? n : null;
@@ -89,7 +91,7 @@ export function OrderScreensTable({
           {dias !== null && (commonWindow && onApplyWindow ? (
             <Button type="button" size="xs" variant="outline" onClick={onApplyWindow}>
               <ArrowRight aria-hidden />
-              Mover al próximo hueco: {formatDate(commonWindow)} → {formatDate(addDays(commonWindow, dias - 1))}
+              Mover al próximo hueco: {formatDate(commonWindow, tz)} → {formatDate(addDays(commonWindow, dias - 1), tz)}
             </Button>
           ) : checking ? (
             <span className="text-xs text-muted-foreground">Buscando hueco común…</span>
@@ -115,7 +117,7 @@ export function OrderScreensTable({
             const blockedLabel = (() => {
               if (hits.length === 0) return null;
               const who = [hits[0].io_number, hits[0].brand].filter(Boolean).join(" · ");
-              const days = (hits[0].blockedDays ?? []).map((d) => formatDate(d)).join(", ");
+              const days = (hits[0].blockedDays ?? []).map((d) => formatDate(d, tz)).join(", ");
               const rest = free !== null && free > 0 && cap !== null ? `quedan ${formatNumber(free)} de ${formatNumber(cap)} slots · ` : "";
               return `${free !== null && free > 0 ? "Parcial" : "Llena"} · ${rest}${who || "otro periodo"}${days ? ` (${days})` : ""} — quítala o cambia fechas`;
             })();

@@ -13,11 +13,13 @@ import { filterPickScreens } from "@/lib/screen-pick";
 import type { ScreenConflict } from "@/lib/availability";
 import type { ScreenPick } from "./types";
 import { plural } from "./types";
+import { useTz } from "@/components/tenant-time";
 
 /** Combo estándar de pantallas con disponibilidad.
  *  SSOT: misma pieza en nueva orden y en editar pantallas (drawer).
  *  Ocupada = visible pero no seleccionable; calendario por fila. */
 export function ScreenMultiSelect({
+  allowUnavailable = false,
   screens,
   selected,
   onToggle,
@@ -39,6 +41,7 @@ export function ScreenMultiSelect({
   isChecking,
   disabled,
 }: {
+  allowUnavailable?: boolean;
   screens: ScreenPick[];
   selected: string[];
   onToggle: (id: string) => void;
@@ -60,6 +63,7 @@ export function ScreenMultiSelect({
   isChecking: boolean;
   disabled?: boolean;
 }) {
+  const tz = useTz();
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
 
@@ -159,11 +163,11 @@ export function ScreenMultiSelect({
               const free = periodReady ? remainingOf(s.id) : null;
               const cap = periodReady ? capacityOf(s.id) : null;
               const restNote =
-                !blocked && free !== null && cap !== null && free < cap
+                (!blocked || allowUnavailable) && free !== null && cap !== null && free < cap
                   ? `Quedan ${formatNumber(free)} de ${formatNumber(cap)} slots`
                   : null;
               const note = occupied.length > 0
-                ? `${free !== null && free > 0 ? "Parcial" : "No disponible"} · ${[occupied[0].io_number, occupied[0].brand].filter(Boolean).join(" · ") || "ocupada"}${until ? ` · hasta ${formatDate(until)}` : ""}`
+                ? `${free !== null && free > 0 ? "Parcial" : "No disponible"} · ${[occupied[0].io_number, occupied[0].brand].filter(Boolean).join(" · ") || "ocupada"}${until ? ` · hasta ${formatDate(until, tz)}` : ""}`
                 : restNote;
               return (
                 <div
@@ -174,7 +178,7 @@ export function ScreenMultiSelect({
                   )}
                 >
                   <label
-                    aria-disabled={blocked}
+                    aria-disabled={blocked && !allowUnavailable}
                     className={cn(
                       "flex min-w-0 flex-1 cursor-pointer items-center gap-2.5",
                       blocked && "cursor-not-allowed",

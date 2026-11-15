@@ -6,7 +6,7 @@ import {
   addDays,
   firstFreeDay,
   nextFreeWindow,
-  todayLima,
+  todayIn,
   unionRanges,
 } from "../lib/availability-utils";
 
@@ -58,14 +58,14 @@ describe("nextFreeWindow", () => {
   });
 });
 
-describe("unionRanges + todayLima", () => {
+describe("unionRanges + todayIn", () => {
   it("une listas", () => {
     assert.deepEqual(
       unionRanges([[{ starts: "a", ends: "b" }], [{ starts: "c", ends: "d" }]]),
       [{ starts: "a", ends: "b" }, { starts: "c", ends: "d" }],
     );
   });
-  it("todayLima es yyyy-mm-dd", () => {
-    assert.match(todayLima(), /^\d{4}-\d{2}-\d{2}$/);
+  it("todayIn es yyyy-mm-dd", () => {
+    assert.match(todayIn("America/Lima"), /^\d{4}-\d{2}-\d{2}$/);
   });
 });

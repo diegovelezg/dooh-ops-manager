@@ -1,6 +1,6 @@
 // Guard compartido de las rutas `app/api/*/[id]/*` + settings actions.
-// Centraliza: exigir Supabase configurado, extraer `:id` (Next 16: promesa),
-// exigir sesión (401) y membresía por tenant vía `sys_memberships` (403).
+// Centraliza: exigir la DB configurada, extraer `:id` (Next 16: promesa),
+// exigir sesión (401) y membresía por tenant vía la arista `member_of` (403).
 // Multiuser por tenant: cualquier miembro ve todo su tenant; sin membresía
 // no hay acceso (sin bypass legacy).
 import "server-only";
@@ -8,43 +8,31 @@ import "server-only";
 /** Usuario autenticado o `Response` 401. Sin auth configurada: fail-closed salvo
  *  anon-dev explícito (`ALLOW_ANON_DEV=1` fuera de prod), que retorna null. */
 export async function requireApiUser(): Promise<{ id: string; email: string | null } | Response | null> {
-  let configured = false;
-  try {
-    const { isUserAuthConfigured } = await import("@/lib/supabase-server");
-    configured = isUserAuthConfigured();
-  } catch {
-    configured = false;
-  }
-  if (!configured) {
+  const { isDbConfigured } = await import("@/lib/surreal");
+  if (!isDbConfigured()) {
     const { isAnonDevAllowed } = await import("@/lib/tenant");
     if (isAnonDevAllowed()) return null;
     return Response.json({ error: "No autenticado." }, { status: 401 });
   }
   try {
-    const { createServerSupabase } = await import("@/lib/supabase-server");
-    const supabase = await createServerSupabase();
-    const { data } = await supabase.auth.getUser();
-    const user = data.user;
+    const { getSessionUser } = await import("@/lib/auth");
+    const user = await getSessionUser();
     if (!user) return Response.json({ error: "No autenticado." }, { status: 401 });
-    return { id: user.id, email: user.email ?? null };
+    return { id: user.id, email: user.email };
   } catch {
     return Response.json({ error: "No autenticado." }, { status: 401 });
   }
 }
 
-/** Roles del usuario por tienda vía SSOT tenant (issue #4: un solo chequeo). */
+/** Roles del usuario por tienda (arista `member_of`, identidad de servidor). */
 async function userStoreRoles(userId: string): Promise<Map<string, string>> {
   try {
-    const { getSupabase } = await import("@/lib/supabase");
-    const { data } = await getSupabase()
-      .from("sys_memberships")
-      .select("store_id,role")
-      .eq("user_id", userId);
-    const out = new Map<string, string>();
-    for (const r of ((data ?? []) as Array<Record<string, unknown>>)) {
-      out.set(String(r.store_id ?? ""), String(r.role ?? "seller"));
-    }
-    return out;
+    const { surql } = await import("@/lib/surreal");
+    const rows = await surql<Array<{ store: string; role: string }>>(
+      "SELECT record::id(out) AS store, role FROM member_of WHERE in = type::record('user', $user)",
+      { user: userId },
+    );
+    return new Map(rows.map((r) => [r.store, r.role]));
   } catch {
     return new Map();
   }
@@ -90,21 +78,16 @@ export async function requireStoreAccess(
  *  Devuelve `{storeId, auth, row}` o el `Response` 404 listo para retornar
  *  (ausencia y falta de acceso responden idéntico: nunca oráculo). */
 export async function requireRouteEntity(
-  table: "crm_companies" | "inv_screens" | "io_orders",
+  table: import("@/lib/entity-lookup").EntityTable,
   id: string,
-  columns: string,
   notFound: string,
 ): Promise<
   | { storeId: string; auth: { id: string; email: string | null } | null; row: Record<string, unknown> }
   | Response
 > {
-  const { getSupabase } = await import("@/lib/supabase");
-  const db = getSupabase();
-  const { data } = await db.from(table).select(columns).eq("id", id).maybeSingle();
-  if (!data) return Response.json({ error: notFound }, { status: 404 });
-  // Cliente sin tipar por tabla dinámica: la fila es objeto (o null, ya
-  // descartado arriba); el cast pasa por `unknown` en un solo lugar.
-  const row = data as unknown as Record<string, unknown>;
+  const { findEntity } = await import("@/lib/entity-lookup");
+  const row = await findEntity(table, id);
+  if (!row) return Response.json({ error: notFound }, { status: 404 });
   const storeId = String(row.store_id ?? "");
   const access = await requireStoreAccess(storeId);
   if (access instanceof Response) return Response.json({ error: notFound }, { status: 404 });

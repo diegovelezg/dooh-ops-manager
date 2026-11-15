@@ -12,14 +12,10 @@
 // (HISTÓRICO: los formatos scout/strategist/copywriter/prospect/dispatcher/
 // analyst son del motor de retención extirpado en 20261122 y ya no se emiten.)
 // El `failed` va en su columna, no en el texto. `current` nunca lleva PII.
-import { getSupabase } from "@/lib/supabase";
+import { surql } from "@/lib/surreal";
+import { randomUUID } from "node:crypto";
 import { createLogger } from "@/lib/log";
-import {
-  findConflict,
-  type ActiveOp,
-  type ErrorCode,
-  type ScopeKind,
-} from "@/lib/operations";
+import type { ErrorCode, ScopeKind } from "@/lib/operations";
 
 const log = createLogger("background");
 
@@ -80,145 +76,67 @@ function mapRun(r: Record<string, unknown>): BackgroundRun {
   };
 }
 
+const S = "type::record('sys_store', $store)";
+const RUN_COLS = `record::id(id) AS id, kind, label, status, pulse_state, total, processed, failed, current, summary,
+  error, fn::iso(started_at) AS started_at, fn::iso(finished_at) AS finished_at, scope_kind, scope_id,
+  fn::iso(updated_at) AS updated_at, error_code`;
+const RUN = "type::record('sys_run', $id)";
+
 export async function getLatestRun(storeId: string): Promise<BackgroundRun | null> {
-  const db = getSupabase();
-  const { data, error } = await db
-    .from("sys_runs")
-    .select("*")
-    .eq("store_id", storeId)
-    .order("started_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (error) throw new Error(`Runs read: ${error.message}`);
-  return data ? mapRun(data as Record<string, unknown>) : null;
+  const rows = await surql<Array<Record<string, unknown>>>(
+    `SELECT ${RUN_COLS} FROM sys_run WHERE store = ${S} ORDER BY started_at DESC LIMIT 1`,
+    { store: storeId },
+  );
+  return rows[0] ? mapRun(rows[0]) : null;
 }
 
 /** ISO del último run terminado de un kind (para throttles). null si nunca. */
 export async function getLastFinishedAt(storeId: string, kind: string): Promise<string | null> {
-  const db = getSupabase();
-  const { data, error } = await db
-    .from("sys_runs")
-    .select("started_at,finished_at")
-    .eq("store_id", storeId)
-    .eq("kind", kind)
-    .neq("status", "running")
-    .order("started_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (error) return null;
-  const r = (data ?? null) as Record<string, unknown> | null;
-  if (!r) return null;
-  return (String(r.finished_at ?? r.started_at ?? "") || null) as string | null;
-}
-
-async function hasRunningRun(
-  storeId: string,
-  filter?: { kinds?: string[]; scopeKind?: ScopeKind; scopeId?: string | null },
-): Promise<boolean> {
-  // Sin filtro: vía rápida legacy (1 fila, sin leer el universo).
-  if (!filter) {
-    const db = getSupabase();
-    const { data, error } = await db
-      .from("sys_runs")
-      .select("id")
-      .eq("store_id", storeId)
-      .eq("status", "running")
-      .limit(1)
-      .maybeSingle();
-    if (error) throw new Error(`Runs read: ${error.message}`);
-    return Boolean(data);
-  }
-  const running = await getRunningRuns(storeId);
-  return running.some(
-    (r) =>
-      (!filter.kinds || filter.kinds.includes(r.kind)) &&
-      (!filter.scopeKind || r.scopeKind === filter.scopeKind) &&
-      (filter.scopeId === undefined || r.scopeId === filter.scopeId),
+  const rows = await surql<Array<{ at: string | null }>>(
+    `SELECT fn::iso(finished_at ?? started_at) AS at FROM sys_run
+     WHERE store = ${S} AND kind = $kind AND status != 'running' ORDER BY started_at DESC LIMIT 1`,
+    { store: storeId, kind },
   );
+  return rows[0]?.at ?? null;
 }
 
 /** Todas las corridas en curso (el lock granular y la cinta las leen de aquí). */
 async function getRunningRuns(storeId: string): Promise<BackgroundRun[]> {
-  const db = getSupabase();
-  const { data, error } = await db
-    .from("sys_runs")
-    .select("*")
-    .eq("store_id", storeId)
-    .eq("status", "running")
-    .order("started_at", { ascending: false });
-  if (error) throw new Error(`Runs read: ${error.message}`);
-  return ((data ?? []) as Array<Record<string, unknown>>).map(mapRun);
+  const rows = await surql<Array<Record<string, unknown>>>(
+    `SELECT ${RUN_COLS} FROM sys_run WHERE store = ${S} AND status = 'running' ORDER BY started_at DESC`,
+    { store: storeId },
+  );
+  return rows.map(mapRun);
 }
 
 /** Fuente de la cinta multi-run (Fase 2): en curso + últimos terminados. */
 export async function getActiveRuns(storeId: string, finishedLimit = 3): Promise<BackgroundRun[]> {
-  const running = await getRunningRuns(storeId);
-  const db = getSupabase();
-  const { data, error } = await db
-    .from("sys_runs")
-    .select("*")
-    .eq("store_id", storeId)
-    .neq("status", "running")
-    .order("started_at", { ascending: false })
-    .limit(finishedLimit);
-  if (error) throw new Error(`Runs read: ${error.message}`);
-  const finished = ((data ?? []) as Array<Record<string, unknown>>).map(mapRun);
-  return [...running, ...finished];
-}
-
-function toActiveOp(r: BackgroundRun): ActiveOp {
-  return { kind: r.kind, scopeKind: r.scopeKind, scopeId: r.scopeId, label: r.label };
-}
-
-/** Primitiva del lock por compatibilidad (Fase 3): la corrida en curso
- *  incompatible con `{kind, scope}`, o `null` si hay vía libre. */
-async function hasConflict(
-  storeId: string,
-  op: { kind: string; scopeKind?: ScopeKind; scopeId?: string | null },
-): Promise<BackgroundRun | null> {
-  const running = await getRunningRuns(storeId);
-  const hit = findConflict(op, running.map(toActiveOp));
-  if (!hit) return null;
-  return running.find((r) => r.kind === hit.kind && r.scopeId === hit.scopeId && r.label === hit.label) ?? null;
+  const [running, finished] = await Promise.all([
+    getRunningRuns(storeId),
+    surql<Array<Record<string, unknown>>>(
+      `SELECT ${RUN_COLS} FROM sys_run WHERE store = ${S} AND status != 'running' ORDER BY started_at DESC LIMIT $limit`,
+      { store: storeId, limit: finishedLimit },
+    ),
+  ]);
+  return [...running, ...finished.map(mapRun)];
 }
 
 /** Minutos sin heartbeat tras los cuales un `running` se da por muerto.
- *  `advanceRun` toca `updated_at` en cada paso, así que una corrida que
- *  progresa nunca se siega; una colgada (crash, deploy, script manual)
- *  libera el lock sola en vez de bloquear para siempre. */
+ *  Cada escritura sella `updated_at`, así que una corrida que progresa nunca se siega;
+ *  una colgada (crash, deploy, script manual) libera el lock sola en vez de bloquear
+ *  para siempre. */
 const STALE_RUN_MINUTES = 30;
 
 /** Marca como error los `running` sin heartbeat (best-effort, nunca lanza).
  *  Devuelve cuántos segó. */
 async function reapStaleRuns(storeId: string): Promise<number> {
   try {
-    const db = getSupabase();
-    const cutoff = Date.now() - STALE_RUN_MINUTES * 60_000;
-    const { data, error } = await db
-      .from("sys_runs")
-      .select("id,started_at,updated_at")
-      .eq("store_id", storeId)
-      .eq("status", "running");
-    if (error || !data) return 0;
-    const dead = ((data ?? []) as Array<Record<string, unknown>>)
-      .filter((r) => {
-        const beat = String(r.updated_at ?? r.started_at ?? "");
-        const t = beat ? Date.parse(beat) : NaN;
-        return Number.isNaN(t) || t < cutoff;
-      })
-      .map((r) => String(r.id ?? ""))
-      .filter(Boolean);
-    if (dead.length === 0) return 0;
-    log.warn("reapStaleRuns", { count: dead.length, storeId });
-    await db
-      .from("sys_runs")
-      .update({
-        status: "error",
-        error: `Stuck sin cierre ni heartbeat en ${STALE_RUN_MINUTES}min (reap automático)`,
-        current: null,
-        finished_at: new Date().toISOString(),
-      })
-      .in("id", dead);
+    const dead = await surql<unknown[]>(
+      `UPDATE sys_run SET status = 'error', error = $msg, current = NONE, finished_at = time::now()
+       WHERE store = ${S} AND status = 'running' AND updated_at < time::now() - <duration> $age RETURN record::id(id)`,
+      { store: storeId, msg: `Stuck sin cierre ni heartbeat en ${STALE_RUN_MINUTES}min (reap automático)`, age: `${STALE_RUN_MINUTES}m` },
+    );
+    if (dead.length > 0) log.warn("reapStaleRuns", { count: dead.length, storeId });
     return dead.length;
   } catch {
     return 0;
@@ -234,35 +152,20 @@ export async function startRun(
 ): Promise<string> {
   // Auto-limpieza: un colgado no debe bloquear a los vivos.
   await reapStaleRuns(storeId).catch(() => {});
-  const db = getSupabase();
-  const scopeKind = opts?.scopeKind ?? "global";
-  const scopeId = opts?.scopeId ?? null;
-  // Migración 20261021000000: si la DB aún no la tiene, reintenta legacy.
-  const { data, error } = await db
-    .from("sys_runs")
-    .insert({ store_id: storeId, kind, label, total, status: "running", scope_kind: scopeKind, scope_id: scopeId })
-    .select("id")
-    .single();
-  if (!error && data) {
-    log.info("startRun", { storeId, kind, runId: String(data.id) });
-    return String(data.id);
-  }
-  const legacy = await db
-    .from("sys_runs")
-    .insert({ store_id: storeId, kind, label, total, status: "running" })
-    .select("id")
-    .single();
-  if (legacy.error || !legacy.data) throw new Error(`Run insert: ${legacy.error?.message ?? error?.message}`);
-  log.info("startRun", { storeId, kind, runId: String(legacy.data.id), legacy: true });
-  return String(legacy.data.id);
+  const id = randomUUID();
+  await surql(
+    `CREATE type::record('sys_run', $id) SET store = ${S}, kind = $kind, label = $label, total = $total,
+       scope_kind = $scopeKind, scope_id = $scopeId ?? NONE`,
+    { id, store: storeId, kind, label, total, scopeKind: opts?.scopeKind ?? "global", scopeId: opts?.scopeId ?? null },
+  );
+  log.info("startRun", { storeId, kind, runId: id });
+  return id;
 }
 
 /**
- * Slot atómico de corrida (issue #24, workers concurrentes): check de la
- * matriz #16 + insert en UNA transacción (`sys_run_start`, advisory lock
- * por store). Devuelve el run id, o `null` si hay ocupación (el caller
- * omite en vez de duplicar: el trabajo ya lo cubre la corrida en curso).
- * Sin RPC = error fuerte (corte sin-cola: DB sin migrar no se tolera).
+ * Slot atómico de corrida (issue #24, workers concurrentes): check de la matriz #16 + alta en UNA
+ * transacción (`fn::run_start`, registro compartido por tienda). Devuelve el run id, o `null`
+ * si hay ocupación (el caller omite en vez de duplicar: el trabajo ya lo cubre la corrida en curso).
  */
 export async function claimRunSlot(
   storeId: string,
@@ -271,40 +174,17 @@ export async function claimRunSlot(
   total: number,
 ): Promise<string | null> {
   await reapStaleRuns(storeId).catch(() => {});
-  const db = getSupabase();
-  const { data, error } = await db.rpc("sys_run_start", {
-    p_store_id: storeId,
-    p_kind: kind,
-    p_label: label,
-    p_total: total,
-  });
-  if (error) throw new Error(`Run slot: ${error.message}`);
-  return (data as string | null) ?? null;
+  return (await surql<string | null>(`RETURN fn::run_start(${S}, $kind, $label, $total)`, { store: storeId, kind, label, total })) ?? null;
 }
 
-/** Actualiza el total de una corrida en curso (para progreso honesto 0/0 → N). */
-async function setRunTotal(runId: string, total: number): Promise<void> {
-  const db = getSupabase();
-  await db.from("sys_runs").update({ total }).eq("id", runId);
-}
-
-/** Actualiza el progreso en vivo de una corrida (con heartbeat). En DBs
- *  sin `updated_at` reintenta sin él: el progreso nunca se pierde. */
+/** Actualiza el progreso en vivo de una corrida (el heartbeat `updated_at` se sella solo). */
 export async function advanceRun(
   runId: string,
   p: { processed: number; failed: number; current: string | null },
 ): Promise<void> {
-  const db = getSupabase();
-  const now = new Date().toISOString();
-  const { error } = await db
-    .from("sys_runs")
-    .update({ current: p.current, processed: p.processed, failed: p.failed, updated_at: now })
-    .eq("id", runId);
-  if (!error) return;
-  await db
-    .from("sys_runs")
-    .update({ current: p.current, processed: p.processed, failed: p.failed })
-    .eq("id", runId);
+  await surql(`UPDATE ${RUN} SET current = $current ?? NONE, processed = $processed, failed = $failed`, {
+    id: runId, current: p.current, processed: p.processed, failed: p.failed,
+  });
 }
 
 /** Error compacto con stack para sys_runs.error (text): si un worker
@@ -338,34 +218,15 @@ export async function finishRun(
   },
 ): Promise<void> {
   const t0 = Date.now();
-  const db = getSupabase();
-  const base = {
-    status: p.status,
-    processed: p.processed,
-    failed: p.failed,
-    summary: p.summary ?? null,
-    error: p.error ?? null,
-    current: null,
-    finished_at: new Date().toISOString(),
-  };
-  if (p.pulseState || p.errorCode) {
-    // Migraciones 20261019000000/20261021000000: si la DB aún no las
-    // tiene, reintenta sin ellas.
-    const { error } = await db
-      .from("sys_runs")
-      .update({
-        ...base,
-        ...(p.pulseState ? { pulse_state: p.pulseState } : null),
-        ...(p.errorCode ? { error_code: p.errorCode } : null),
-      })
-      .eq("id", runId);
-    if (!error) {
-      log.info("finishRun", { runId, status: p.status, processed: p.processed, failed: p.failed, ms: Date.now() - t0 });
-      return;
-    }
-    log.warn("finishRun degraded", { runId, error: error.message });
-  }
-  await db.from("sys_runs").update(base).eq("id", runId);
+  await surql(
+    `UPDATE ${RUN} SET status = $status, processed = $processed, failed = $failed, summary = $summary ?? NONE,
+       error = $error ?? NONE, current = NONE, finished_at = time::now(),
+       pulse_state = $pulse ?? NONE, error_code = $code ?? NONE`,
+    {
+      id: runId, status: p.status, processed: p.processed, failed: p.failed, summary: p.summary ?? null,
+      error: p.error ?? null, pulse: p.pulseState ?? null, code: p.errorCode ?? null,
+    },
+  );
   if (p.status === "error") log.error("finishRun", { runId, status: p.status, error: p.error ?? undefined });
   else log.info("finishRun", { runId, status: p.status, processed: p.processed, failed: p.failed, ms: Date.now() - t0 });
 }

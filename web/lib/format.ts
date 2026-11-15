@@ -182,7 +182,7 @@ export function toTitleCase(value: string | null | undefined): string {
 
 /** Tiempo relativo corto (es) para feeds: "ahora mismo" · "hace N min/h" ·
  *  "hace N d" · "dd/mm". Inválido o futuro → "—" / "ahora mismo". */
-export function formatTimeAgo(iso: string | null | undefined, nowMs = Date.now()): string {
+export function formatTimeAgo(iso: string | null | undefined, tz: string, nowMs = Date.now()): string {
   if (typeof iso !== "string" || !iso) return "—";
   const t = Date.parse(iso);
   if (!Number.isFinite(t)) return "—";
@@ -193,23 +193,25 @@ export function formatTimeAgo(iso: string | null | undefined, nowMs = Date.now()
   if (h < 24) return `hace ${h} h`;
   const d = Math.floor(min / 60 / 24);
   if (d < 7) return `hace ${d} d`;
-  return formatDayMonth(iso);
+  return formatDayMonth(dayOf(t, tz));
 }
 
 // ---------------- Fechas (SSOT display + parse/canon) ----------------
 // Estilo único de fechas del sitio (ver encabezado: cero inlines fuera de
 // aquí). Display "dd/mm/yyyy" ("03/11/2026"), con hora "dd/mm/yyyy hh:mm"
-// en Lima ("03/11/2026 14:05"), corto "dd/mm" ("03/11"). Vacío/inválido →
-// "—" (mismo vacío que números).
-// Canon: el día es texto "yyyy-mm-dd" (comparable con `<`); el inicio de
-// día Lima para la BD sale de `limaDayStart`. Zona del negocio: Lima.
+// en la zona del tenant ("03/11/2026 14:05"), corto "dd/mm" ("03/11"). Vacío/
+// inválido → "—" (mismo vacío que números).
+// Canon: la BD guarda INSTANTES en UTC. El día es texto "yyyy-mm-dd" (comparable con
+// `<`) y existe solo en la zona IANA del tenant (`sys_store.timezone`): toda
+// conversión instante↔día pasa por `dayOf/dayStart/todayIn(tz)` con la zona
+// EXPLÍCITA (nunca una zona global). `DEFAULT_TIME_ZONE` solo siembra tiendas nuevas.
 
 /** Locale de display. Solo `formatDateTime`/`displayEndOf` usan `Intl`;
  *  el resto se construye manual (dd/mm) para no depender del ICU. */
 export const DATE_LOCALE = "es-PE";
 
-/** Zona horaria del negocio: toda hora visible es Lima. */
-export const DATE_TIME_ZONE = "America/Lima";
+/** Zona con la que nace un tenant nuevo (editable en Ajustes). NO es un fallback de runtime. */
+export const DEFAULT_TIME_ZONE = "America/Lima";
 
 /** Día en ms. Aritmética de calendario siempre en UTC (sin DST). */
 export const DAY_MS = 86_400_000;
@@ -313,6 +315,12 @@ export function isoDayToNum(day: string): number {
 }
 
 /** Ordinal → "yyyy-mm-dd". */
+/** Día 1 del mes de `isoDay` desplazado `delta` meses ("2026-11-14", 1 → "2026-12-01"). Calendario puro, sin zonas. */
+export function monthFirstISO(isoDay: string, delta = 0): string {
+  const [y, m] = isoDay.split("-").map(Number);
+  const idx = y * 12 + (m - 1) + delta;
+  return `${Math.floor(idx / 12)}-${pad2((idx % 12) + 1)}-01`;
+}
 export function dayNumToISO(num: number): string {
   const d = new Date(num * DAY_MS);
   return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`;
@@ -336,51 +344,93 @@ export function diffDaysInclusive(starts: unknown, ends: unknown): number | null
   return n >= 1 ? n : null;
 }
 
-/** Hoy en Lima como "yyyy-mm-dd" (canon para ventanas y sellos UI). */
-export function todayLima(now = new Date()): string {
-  return now.toLocaleDateString("en-CA", { timeZone: DATE_TIME_ZONE });
-}
+// ── Zona horaria por tenant (IANA) ─────────────────────────────────────────
+const dayFmts = new Map<string, Intl.DateTimeFormat>();
+const wallFmts = new Map<string, Intl.DateTimeFormat>();
 
-/** Inicio de día Lima para la BD: "2026-11-03" → "2026-11-03T00:00:00-05:00". */
-export function limaDayStart(day: string): string {
-  return `${day}T00:00:00-05:00`;
-}
-
-/** Inicio de día UTC para filtros: "2026-11-03" → "2026-11-03T00:00:00Z". */
-export function utcDayStart(day: string): string {
-  return `${day}T00:00:00Z`;
-}
-
-/** "2026-11-03" o ISO "2026-11-03T00:00:00-05:00" → "03/11/2026". */
-export function formatDate(v: unknown): string {
-  if (typeof v !== "string" || !v) return "—";
-  const m = ISO_DATE_PREFIX_RE.exec(v);
-  return m ? `${m[3]}/${m[2]}/${m[1]}` : "—";
-}
-
-let dateTimeFmt: Intl.DateTimeFormat | null = null;
-let displayEndOfFmt: Intl.DateTimeFormat | null = null;
-
-/** Timestamptz → "03/11/2026 14:05" en Lima. Fecha sola → solo fecha. */
-export function formatDateTime(v: unknown): string {
-  if (typeof v !== "string" || !v) return "—";
-  if (ISO_DATE_RE.test(v)) return formatDate(v);
-  const t = Date.parse(v);
-  if (Number.isNaN(t)) return formatDate(v);
+/** ¿Nombre IANA que el runtime reconoce? ("America/Lima"). */
+export function isValidTimeZone(tz: unknown): tz is string {
+  if (typeof tz !== "string" || tz.length < 3 || tz.length > 64) return false;
   try {
-    dateTimeFmt ??= new Intl.DateTimeFormat(DATE_LOCALE, {
-      timeZone: DATE_TIME_ZONE,
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    });
-    return dateTimeFmt.format(new Date(t)).replace(",", "");
+    new Intl.DateTimeFormat("en-US", { timeZone: tz });
+    return true;
   } catch {
-    return formatDate(v);
+    return false;
   }
+}
+
+function wallParts(tz: string, t: number): { y: number; mo: number; d: number; h: number; mi: number; s: number } {
+  let f = wallFmts.get(tz);
+  if (!f) {
+    f = new Intl.DateTimeFormat("en-CA", { timeZone: tz, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    wallFmts.set(tz, f);
+  }
+  const parts = f.formatToParts(new Date(t));
+  const n = (type: string) => Number(parts.find((x) => x.type === type)?.value ?? NaN);
+  return { y: n("year"), mo: n("month"), d: n("day"), h: n("hour"), mi: n("minute"), s: n("second") };
+}
+
+/** Desfase de `tz` respecto a UTC en el instante `t` (ms; incluye DST). */
+function offsetMs(tz: string, t: number): number {
+  const w = wallParts(tz, t);
+  return Date.UTC(w.y, w.mo - 1, w.d, w.h, w.mi, w.s) - Math.floor(t / 1000) * 1000;
+}
+
+/** Día "yyyy-mm-dd" que `v` (instante) ocupa en la zona `tz`. */
+export function dayOf(v: string | number | Date, tz: string): string {
+  const t = v instanceof Date ? v.getTime() : typeof v === "number" ? v : Date.parse(v);
+  if (!Number.isFinite(t)) throw new Error(`Fecha inválida: ${String(v)}`);
+  let f = dayFmts.get(tz);
+  if (!f) {
+    f = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" });
+    dayFmts.set(tz, f);
+  }
+  const parts = f.formatToParts(new Date(t));
+  const n = (type: string) => parts.find((x) => x.type === type)?.value ?? "00";
+  return `${n("year")}-${n("month")}-${n("day")}`;
+}
+
+/** Hoy en la zona `tz` como "yyyy-mm-dd". */
+export function todayIn(tz: string, now: Date | number = new Date()): string {
+  return dayOf(now, tz);
+}
+
+/** Inicio del día `day` en `tz` como instante (ms UTC). Respeta DST. */
+export function dayStartMs(day: string, tz: string): number {
+  const [y, m, d] = day.split("-").map(Number);
+  const guess = Date.UTC(y, m - 1, d);
+  const first = guess - offsetMs(tz, guess);
+  return guess - offsetMs(tz, first);
+}
+
+/** Inicio del día `day` en `tz` como ISO UTC ("2026-11-03T05:00:00.000Z"): lo que va a la BD. */
+export function dayStart(day: string, tz: string): string {
+  return new Date(dayStartMs(day, tz)).toISOString();
+}
+
+/** "2026-11-03" → "03/11/2026"; un instante se convierte antes al día de `tz`. */
+export function formatDate(v: unknown, tz: string): string {
+  if (typeof v !== "string" || !v) return "—";
+  if (ISO_DATE_RE.test(v)) return `${v.slice(8, 10)}/${v.slice(5, 7)}/${v.slice(0, 4)}`;
+  if (!Number.isFinite(Date.parse(v))) return "—";
+  const d = dayOf(v, tz);
+  return `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)}`;
+}
+
+const dateTimeFmts = new Map<string, Intl.DateTimeFormat>();
+
+/** Instante → "03/11/2026 14:05" en `tz`. Fecha sola → solo fecha. */
+export function formatDateTime(v: unknown, tz: string): string {
+  if (typeof v !== "string" || !v) return "—";
+  if (ISO_DATE_RE.test(v)) return formatDate(v, tz);
+  const t = Date.parse(v);
+  if (Number.isNaN(t)) return "—";
+  let f = dateTimeFmts.get(tz);
+  if (!f) {
+    f = new Intl.DateTimeFormat(DATE_LOCALE, { timeZone: tz, day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+    dateTimeFmts.set(tz, f);
+  }
+  return f.format(new Date(t)).replace(",", "");
 }
 
 /** Día/mes corto para vigencias ("2026-11-08" → "08/11"). Inválido → "—". */
@@ -390,33 +440,38 @@ export function formatDayMonth(iso: string | null | undefined): string {
   return m ? `${m[3]}/${m[2]}` : "—";
 }
 
-/** Fin exclusivo ISO (BD) → día inclusivo "yyyy-mm-dd" para mostrar.
- *  Sin restar 24h a ciegas. El fin semiabierto puede traer hora no
- *  medianoche; restar un día entero mostraba el día anterior. Se resta 1ms y
- *  se formatea en Lima (zona de periodBounds). Falla cerrado (throw): el
- *  display usa `displayEndOfSafe`. */
-export function displayEndOf(exclusiveIso: string): string {
-  if (!Number.isFinite(Date.parse(exclusiveIso))) throw new Error(`Fecha inválida: ${exclusiveIso}`);
-  const t = Date.parse(exclusiveIso) as number;
-  const d = new Date(t - 1);
-  displayEndOfFmt ??= new Intl.DateTimeFormat("en-CA", {
-    timeZone: DATE_TIME_ZONE,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  });
-  const parts = displayEndOfFmt.formatToParts(d);
-  const get = (type: string) => parts.find((x) => x.type === type)?.value ?? "00";
-  return `${get("year")}-${get("month")}-${get("day")}`;
+/** Fin exclusivo (instante) → último día inclusivo "yyyy-mm-dd" en `tz`: se resta 1 ms (nunca 24 h,
+ *  que fallaría en días de DST). Falla cerrado (throw); el display usa `displayEndOfSafe`. */
+export function displayEndOf(exclusiveIso: string, tz: string): string {
+  const t = Date.parse(exclusiveIso);
+  if (!Number.isFinite(t)) throw new Error(`Fecha inválida: ${exclusiveIso}`);
+  return dayOf(t - 1, tz);
 }
 
 /** Contrato display de `displayEndOf`: null si no hay día válido
  *  (drawers/tablas), en vez de lanzar. */
-export function displayEndOfSafe(v: unknown): string | null {
+export function displayEndOfSafe(v: unknown, tz: string): string | null {
   if (typeof v !== "string" || !v) return null;
   try {
-    return displayEndOf(v);
+    return displayEndOf(v, tz);
   } catch {
     return null;
   }
+}
+
+/** Valor de un control datetime-local, expresado en la zona explícita del tenant. */
+export function toTenantDateTimeInput(instant: string | number, tz: string): string {
+  const w = wallParts(tz, typeof instant === "number" ? instant : Date.parse(instant));
+  return `${w.y}-${pad2(w.mo)}-${pad2(w.d)}T${pad2(w.h)}:${pad2(w.mi)}`;
+}
+/** Hora local del tenant → instante. Rechaza horas inexistentes o ambiguas por DST. */
+export function fromTenantDateTimeInput(value: string, tz: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value) || !isValidISODate(value.slice(0,10))) throw new Error("Fecha y hora inválidas.");
+  const [day,clock] = value.split("T"), [y,m,d] = day.split("-").map(Number), [h,mi] = clock.split(":").map(Number);
+  if(h>23||mi>59)throw new Error("Hora inválida.");
+  const wall = Date.UTC(y,m-1,d,h,mi);
+  const offsets = new Set([-86_400_000,0,86_400_000].map(delta=>offsetMs(tz,wall+delta)));
+  const candidates = [...offsets].map(offset=>wall-offset).filter(t=>toTenantDateTimeInput(t,tz)===value);
+  if(candidates.length!==1)throw new Error("Hora inexistente o ambigua por cambio horario: elige otra hora.");
+  return new Date(candidates[0]).toISOString();
 }

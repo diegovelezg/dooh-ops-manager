@@ -100,7 +100,7 @@ export function CompaniesList({
     [q, kinds, status, sortKey, sortDir, view, page],
   );
 
-  // El sort ordena en servidor (Supabase) sobre todos los datos.
+  // El sort ordena en servidor (SurrealDB) sobre todos los datos.
   // Texto ASC primero; conteos DESC primero (lo más relevante).
   const toggleSort = (key: CompaniesSortKey) => {
     let nextDir: CompaniesSortDir;

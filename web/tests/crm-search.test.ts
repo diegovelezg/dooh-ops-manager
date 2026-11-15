@@ -1,6 +1,6 @@
 // Mismo mecanismo fuzzy en CRM, marcas y órdenes: normalización ES +
 // tokens AND + ranking. Marcas y órdenes filtran en JS (agregación y
-// derivación viven ahí); empresas y contactos vía RPC con paridad.
+// derivación viven ahí); empresas y contactos buscan en SurrealDB (ver surreal-crm.test.ts).
 // Corre con: npm test (node:test stdlib vía tsx, sin dependencias nuevas).
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";

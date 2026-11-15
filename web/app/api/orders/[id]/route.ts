@@ -1,5 +1,5 @@
 import { getOrderDetail } from "@/lib/orders-db";
-import { getSupabase } from "@/lib/supabase";
+import { getStore } from "@/lib/stores-db";
 import { requireRouteEntity, resolveMyRole } from "@/lib/api/guard";
 import { apiLog } from "@/lib/log";
 
@@ -10,7 +10,7 @@ import { apiLog } from "@/lib/log";
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   try {
-    const loaded = await requireRouteEntity("io_orders", id, "store_id", "Orden no encontrada.");
+    const loaded = await requireRouteEntity("io_order", id, "Orden no encontrada.");
     if (loaded instanceof Response) return loaded;
     const { storeId, auth } = loaded;
     const detail = await getOrderDetail(storeId, id);
@@ -18,9 +18,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     const myRole = await resolveMyRole(auth, storeId);
     let shopCountry: string | null = null;
     try {
-      const db = getSupabase();
-      const { data: store } = await db.from("sys_stores").select("shop_country").eq("id", storeId).maybeSingle();
-      shopCountry = (store as Record<string, unknown> | null)?.shop_country as string | null ?? null;
+      shopCountry = (await getStore(storeId))?.shop_country ?? null;
     } catch {
       shopCountry = null;
     }

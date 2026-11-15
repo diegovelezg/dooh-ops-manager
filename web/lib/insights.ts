@@ -3,11 +3,13 @@
 // LLM (brief_narrate, con metering en ai_llm_usage). Sin swarm, sin auto-envíos,
 // sin scoring probabilístico. Anti-ruido: máx 5/día, dedupe por (kind+scope),
 // silencio si sin cambios.
-import { getSupabase } from "@/lib/supabase";
+import { insertInsights, listInsightKeysSince, listInsights, readInsightIds, restoreInsight as restoreInsightRead } from "@/lib/insights-store";
+import { listCompanies } from "@/lib/crm-store";
+import { orderIdsWithPhotos, selectLines, selectOrders } from "@/lib/orders-store";
 import type { DashboardSnapshot } from "@/lib/dashboard";
 // Puro y client-safe; se re-exporta para los callers de servidor/tests.
 // El feed ("use client") importa de `@/lib/insight-mentions` directo:
-// importar `@/lib/insights` en cliente arrastraría supabase/retrieval
+// importar `@/lib/insights` en cliente arrastraría el acceso a datos y retrieval
 // (crawlee → async_hooks) y rompería el bundle (ver _error 2026-11-08).
 import { audienceMentions, buildDrawerHref, describeContextShort, insightCta, isMine, stripBodyLinks } from "@/lib/insight-mentions";
 import { DAY_MS } from "@/lib/format";
@@ -179,14 +181,8 @@ export async function listWallInsights(
   storeId: string,
   me: { userId: string | null; email: string | null; role: string | null },
 ): Promise<WallInsight[]> {
-  const db = getSupabase();
-  const { data: rows } = await db
-    .from("sys_insights")
-    .select("id,kind,title,body,links_json,audience_json,severity,scope_kind,scope_id,context_json,created_at")
-    .eq("store_id", storeId)
-    .order("created_at", { ascending: false })
-    .limit(20);
-  const list = ((rows ?? []) as Array<Record<string, unknown>>).map((r) => ({
+  const rows = await listInsights(storeId, 20);
+  const list = rows.map((r) => ({
     id: String(r.id),
     kind: String(r.kind ?? ""),
     title: String(r.title ?? ""),
@@ -231,15 +227,7 @@ export async function listWallInsights(
   }));
   let readIds = new Set<string>();
   if (me.userId && list.length > 0) {
-    const { data: reads } = await db
-      .from("sys_insight_reads")
-      .select("insight_id")
-      .in(
-        "insight_id",
-        list.map((i) => i.id),
-      )
-      .eq("user_id", me.userId);
-    readIds = new Set(((reads ?? []) as Array<Record<string, unknown>>).map((r) => String(r.insight_id)));
+    readIds = await readInsightIds(me.userId, list.map((i) => i.id));
   }
   return list.map((i) => ({
     ...i,
@@ -264,17 +252,8 @@ async function enrichOrderContext(
   const out = new Map<string, BriefContext>();
   const orderIds = [...new Set(facts.filter((f) => f.scopeKind === "order" && f.scopeId).map((f) => f.scopeId as string))];
   if (orderIds.length === 0) return out;
-  const db = getSupabase();
-  const [{ data: orders }, { data: lines }] = await Promise.all([
-    db
-      .from("io_orders")
-      .select("id,brand,starts_at,ends_at,currency,advertiser_company_id,billing_company_id")
-      .eq("store_id", storeId)
-      .in("id", orderIds)
-      .limit(100),
-    db.from("io_lines").select("io_id,screen_id,rate_minor").eq("store_id", storeId).in("io_id", orderIds).limit(2000),
-  ]);
-  const orderById = new Map(((orders ?? []) as Array<Record<string, unknown>>).map((r) => [String(r.id), r]));
+  const [orders, lines] = await Promise.all([selectOrders(storeId, { ids: orderIds }), selectLines(storeId, orderIds)]);
+  const orderById = new Map(orders.map((r) => [String(r.id), r]));
   const coIds = [
     ...new Set(
       [...orderById.values()].flatMap((r) => [r.advertiser_company_id, r.billing_company_id]).filter(Boolean),
@@ -282,17 +261,11 @@ async function enrichOrderContext(
   ] as string[];
   let nameBy = new Map<string, string>();
   if (coIds.length > 0) {
-    const { data: cos } = await db
-      .from("crm_companies")
-      .select("id,name")
-      .eq("store_id", storeId)
-      .in("id", coIds)
-      .limit(100);
-    nameBy = new Map(((cos ?? []) as Array<Record<string, unknown>>).map((c) => [String(c.id), String(c.name ?? "—")]));
+    nameBy = new Map((await listCompanies(storeId, coIds)).map((c) => [String(c.id), String(c.name ?? "—")]));
   }
   const screensBy = new Map<string, Set<string>>();
   const amountBy = new Map<string, number>();
-  for (const l of ((lines ?? []) as Array<Record<string, unknown>>)) {
+  for (const l of lines) {
     const k = String(l.io_id);
     const set = screensBy.get(k) ?? new Set<string>();
     set.add(String(l.screen_id));
@@ -329,9 +302,16 @@ async function enrichGlobalContext(
   const out = new Map<string, Array<{ label: string; value: string }>>();
   const want = new Set(facts.filter((f) => f.scopeKind === "global").map((f) => f.kind));
   if (want.size === 0) return out;
-  const { formatMoney, startOfDayUTC } = await import("@/lib/format");
-  const db = getSupabase();
-  const today00 = startOfDayUTC(Date.now());
+  const { formatMoney, isoDayPart, isoDayToNum, todayIn } = await import("@/lib/format");
+  // Días del tenant (como el dashboard y la capacidad): un "hoy" en UTC cruza de día antes que el negocio.
+  const { getStoreTimeZone } = await import("@/lib/stores-db");
+  const tz = await getStoreTimeZone(storeId);
+  const todayISO = todayIn(tz);
+  const todayNum = isoDayToNum(todayISO);
+  const endedDayNum = (v: unknown): number => {
+    const d = isoDayPart(v);
+    return d ? isoDayToNum(d) : todayNum;
+  };
   const DAY = DAY_MS;
   const t = (v: unknown): number | null => {
     const n = Date.parse(String(v ?? ""));
@@ -339,32 +319,15 @@ async function enrichGlobalContext(
   };
 
   if (want.has("por_certificar") && snap.porCertificar > 0) {
-    const { data: ended } = await db
-      .from("io_orders")
-      .select("id,ends_at")
-      .eq("store_id", storeId)
-      .neq("status", "cancelled")
-      .lt("ends_at", new Date(today00).toISOString())
-      .limit(500);
-    const ids = ((ended ?? []) as Array<Record<string, unknown>>).map((r) => String(r.id));
+    const ended = await selectOrders(storeId, { live: true, endedBefore: todayISO, limit: 500 });
+    const ids = ended.map((r) => String(r.id));
     if (ids.length > 0) {
-      const { data: photos } = await db
-        .from("io_photo_checks")
-        .select("io_id")
-        .eq("store_id", storeId)
-        .in("io_id", ids)
-        .limit(1000);
-      const withPhoto = new Set(((photos ?? []) as Array<Record<string, unknown>>).map((r) => String(r.io_id)));
-      const waiting = ((ended ?? []) as Array<Record<string, unknown>>).filter((r) => !withPhoto.has(String(r.id)));
+      const withPhoto = await orderIdsWithPhotos(storeId, ids);
+      const waiting = ended.filter((r) => !withPhoto.has(String(r.id)));
       if (waiting.length > 0) {
-        const oldest = Math.max(...waiting.map((r) => Math.floor((today00 - (t(r.ends_at) ?? today00)) / DAY)));
-        const { data: lines } = await db
-          .from("io_lines")
-          .select("rate_minor")
-          .eq("store_id", storeId)
-          .in("io_id", waiting.map((r) => String(r.id)))
-          .limit(2000);
-        const amount = ((lines ?? []) as Array<Record<string, unknown>>).reduce((n, l) => n + Number(l.rate_minor ?? 0), 0);
+        const oldest = Math.max(...waiting.map((r) => todayNum - endedDayNum(r.ends_at)));
+        const lines = await selectLines(storeId, waiting.map((r) => String(r.id)));
+        const amount = lines.reduce((n, l) => n + Number(l.rate_minor ?? 0), 0);
         const m = [
           { label: "En riesgo", value: `${waiting.length} OI${waiting.length === 1 ? "" : "s"}` },
           { label: "Esperando", value: `${oldest}d (la más antigua)` },
@@ -449,10 +412,12 @@ async function narrateFacts(storeId: string, facts: BriefFact[]): Promise<{
 export async function briefAlreadyRanToday(storeId: string): Promise<boolean> {
   try {
     const { getLastFinishedAt } = await import("@/lib/background");
-    const { startOfDayUTC } = await import("@/lib/format");
+    const { dayStartMs, todayIn } = await import("@/lib/format");
+    const { getStoreTimeZone } = await import("@/lib/stores-db");
+    const tz = await getStoreTimeZone(storeId);
     const last = await getLastFinishedAt(storeId, BRIEF_KIND).catch(() => null);
     const t = last ? Date.parse(last) : NaN;
-    return Number.isFinite(t) && t >= startOfDayUTC(Date.now());
+    return Number.isFinite(t) && t >= dayStartMs(todayIn(tz), tz);
   } catch {
     return false;
   }
@@ -469,8 +434,8 @@ export async function runBriefJob(
   const t0 = Date.now();
   const { claimRunSlot, finishRun } = await import("@/lib/background");
   const { getDashboardSnapshot } = await import("@/lib/dashboard");
-  const { startOfDayUTC } = await import("@/lib/format");
-  const db = getSupabase();
+  const { dayStartMs, todayIn } = await import("@/lib/format");
+  const { getStoreTimeZone } = await import("@/lib/stores-db");
   const notes: string[] = [];
   if (opts.force && opts.actor) notes.push(`forzado por ${opts.actor}`);
   let runId: string | null = null;
@@ -490,13 +455,10 @@ export async function runBriefJob(
     if (!opts.force && (await briefAlreadyRanToday(storeId))) {
       return done("Muro: ya corrió hoy.");
     }
-    const today00 = startOfDayUTC(Date.now());
-    const { data: today } = await db
-      .from("sys_insights")
-      .select("id,kind,scope_id")
-      .eq("store_id", storeId)
-      .gte("created_at", new Date(today00).toISOString());
-    const existing = new Set(((today ?? []) as Array<Record<string, unknown>>).map((r) => dedupeKey(String(r.kind ?? ""), (r.scope_id as string | null) ?? null)));
+    const tz = await getStoreTimeZone(storeId);
+    const today00 = dayStartMs(todayIn(tz), tz);
+    const today = await listInsightKeysSince(storeId, new Date(today00).toISOString());
+    const existing = new Set(today.map((r) => dedupeKey(String(r.kind ?? ""), (r.scope_id as string | null) ?? null)));
     if (existing.size >= MAX_POSTS_PER_DAY) return done(`Muro: techo ${MAX_POSTS_PER_DAY}/día alcanzado, silencio.`);
     const snap = await getDashboardSnapshot(storeId);
     const fresh = buildBriefFacts(snap, MAX_POSTS_PER_DAY)
@@ -507,8 +469,8 @@ export async function runBriefJob(
     const orderIds = [...new Set(fresh.filter((f) => f.scopeKind === "order" && f.scopeId).map((f) => f.scopeId as string))];
     let audit = new Map<string, { created_by: string | null; updated_by: string | null; updated_at: string | null }>();
     if (orderIds.length > 0) {
-      const { data } = await db.from("io_orders").select("id,created_by,updated_by,updated_at").eq("store_id", storeId).in("id", orderIds).limit(100);
-      audit = new Map(((data ?? []) as Array<Record<string, unknown>>).map((r) => [String(r.id), {
+      const data = await selectOrders(storeId, { ids: orderIds });
+      audit = new Map(data.map((r) => [String(r.id), {
         created_by: (r.created_by as string | null) ?? null,
         updated_by: (r.updated_by as string | null) ?? null,
         updated_at: (r.updated_at as string | null) ?? null,
@@ -568,7 +530,6 @@ export async function runBriefJob(
       const emails = a ? resolveMentions(a.created_by, a.updated_by, a.updated_at) : [];
       const roles = p.scopeKind === "global" ? ["seller", "admin"] : [];
       return {
-        store_id: storeId,
         kind: p.kind,
         title: p.title,
         body: p.body,
@@ -581,8 +542,7 @@ export async function runBriefJob(
       };
     });
     if (rows.length === 0) return done("Muro: sin cambios, silencio.");
-    const { error } = await db.from("sys_insights").insert(rows);
-    if (error) throw new Error(`Insights insert: ${error.message}`);
+    await insertInsights(storeId, rows);
     const degraded = notes.length > 0 ? ` Avisos: ${notes.join("; ")}.` : "";
     const summary = `Muro: ${rows.length} post(s) (hechos deterministas + ${BRIEF_NARRATE_PROCESS}).${degraded}`;
     if (runId) await finishRun(runId, { status: "done", processed: 1, failed: 0, summary }).catch(() => undefined);
@@ -601,7 +561,5 @@ export async function runBriefJob(
 
 /** Restaura un aviso descartado (borra el dismiss per-user). */
 export async function restoreInsight(insightId: string, userId: string): Promise<void> {
-  const db = getSupabase();
-  const { error } = await db.from("sys_insight_reads").delete().eq("insight_id", insightId).eq("user_id", userId);
-  if (error) throw new Error(`Restore: ${error.message}`);
+  await restoreInsightRead(insightId, userId);
 }

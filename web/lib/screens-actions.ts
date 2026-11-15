@@ -1,7 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getSupabase } from "@/lib/supabase";
+import * as inv from "@/lib/screens-store";
+import { getCompany } from "@/lib/crm-store";
 import { resolveTenantStoreAction as resolveTenantStore } from "@/lib/tenant";
 import { createLogger } from "@/lib/log";
 
@@ -116,79 +117,63 @@ export async function createScreenAction(form: FormData): Promise<ScreensState> 
 
   const supplierRaw = String(form.get("supplier_id") ?? "").trim();
   const supplierId = supplierRaw === "" || supplierRaw === "__none" ? null : supplierRaw;
+  const ownership = String(form.get("ownership") ?? "");
+  if (ownership !== "own" && ownership !== "supplier") return { ok: false, message: "Define la propiedad de la pantalla." };
+  if (ownership === "own" && supplierId) return { ok: false, message: "Una pantalla propia no lleva proveedor." };
+  if (ownership === "supplier" && !supplierId) return { ok: false, message: "Selecciona un proveedor para inventario externo." };
 
   try {
-    const db = getSupabase();
-
     if (supplierId) {
-      const { data: sup } = await db
-        .from("crm_companies")
-        .select("id")
-        .eq("store_id", t.storeId)
-        .eq("id", supplierId)
-        .maybeSingle();
-      if (!sup) return { ok: false, message: "Proveedor no encontrado en esta tienda." };
+      const supplier = await getCompany(t.storeId, supplierId);
+      if (!supplier || supplier.kind !== "proveedor" || supplier.deleted_at) return { ok: false, message: "Proveedor activo no encontrado en esta tienda." };
     }
 
-    let venueId: string | null = null;
-    {
-      // Patrón de datos: 1 pantalla = 1 ubicación propia (el lado B es otra
-      // pantalla con su propia ubicación). El nombre se compone desde
-      // dirección + distrito + ciudad + país (no se pide aparte).
-      const venueAddress = cleanStr(form.get("venue_address"), 300);
-      if (!venueAddress) return { ok: false, message: "Dirección requerida (p. ej. Av. Pardo 793)." };
-      const venueCity = cleanStr(form.get("venue_city"), 120);
-      if (form.get("venue_city") && !venueCity) {
-        return { ok: false, message: "Ciudad de la ubicación muy larga (máx 120)." };
-      }
-      const venueDistrict = cleanStr(form.get("venue_district"), 120);
-      if (form.get("venue_district") && !venueDistrict) {
-        return { ok: false, message: "Distrito de la ubicación muy largo (máx 120)." };
-      }
-      const venueLat = optCoordinate(form.get("venue_latitude"), -90, 90);
-      if (venueLat === undefined) return { ok: false, message: "Latitud inválida (-90…90)." };
-      const venueLng = optCoordinate(form.get("venue_longitude"), -180, 180);
-      if (venueLng === undefined) return { ok: false, message: "Longitud inválida (-180…180)." };
-      const venueCountryRaw = String(form.get("venue_country") ?? "").trim().toUpperCase();
-      const venueCountry =
-        venueCountryRaw === "" || venueCountryRaw === "__NONE" ? null : venueCountryRaw;
-      if (venueCountry !== null && !/^[A-Z]{2}$/.test(venueCountry)) {
-        return { ok: false, message: "País de la ubicación inválido (ISO2, p. ej. PE)." };
-      }
-      const { COUNTRIES } = await import("@/lib/countries");
-      const countryName = venueCountry
-        ? (COUNTRIES.find((c) => c.code === venueCountry)?.name ?? venueCountry)
-        : null;
-      const venueName = [venueAddress, venueDistrict, venueCity, countryName]
-        .filter((x): x is string => typeof x === "string" && x.trim() !== "")
-        .join(", ")
-        .slice(0, 200);
-      const { data: v, error: verr } = await db
-        .from("inv_venues")
-        .insert({
-          store_id: t.storeId,
-          name: venueName,
-          city: venueCity,
-          district: venueDistrict,
-          address: venueAddress,
-          latitude: venueLat,
-          longitude: venueLng,
-          country: venueCountry,
-          ownership: supplierId ? "supplier" : "own",
-          supplier_company_id: supplierId,
-          source: "manual",
-        })
-        .select("id")
-        .maybeSingle();
-      if (verr || !v) { log.warn("createScreenAction", { fail: `DB write: ${verr?.message ?? "ubicación sin id"}` }); return { ok: false, message: `DB write: ${verr?.message ?? "ubicación sin id"}` }; }
-      venueId = (v as { id: string }).id;
+    // Patrón de datos: 1 pantalla = 1 ubicación propia (el lado B es otra
+    // pantalla con su propia ubicación). El nombre se compone desde
+    // dirección + distrito + ciudad + país (no se pide aparte).
+    const venueAddress = cleanStr(form.get("venue_address"), 300);
+    if (!venueAddress) return { ok: false, message: "Dirección requerida (p. ej. Av. Pardo 793)." };
+    const venueCity = cleanStr(form.get("venue_city"), 120);
+    if (form.get("venue_city") && !venueCity) {
+      return { ok: false, message: "Ciudad de la ubicación muy larga (máx 120)." };
     }
-
-    const { data: created, error } = await db
-      .from("inv_screens")
-      .insert({
-        store_id: t.storeId,
-        venue_id: venueId,
+    const venueDistrict = cleanStr(form.get("venue_district"), 120);
+    if (form.get("venue_district") && !venueDistrict) {
+      return { ok: false, message: "Distrito de la ubicación muy largo (máx 120)." };
+    }
+    const venueLat = optCoordinate(form.get("venue_latitude"), -90, 90);
+    if (venueLat === undefined) return { ok: false, message: "Latitud inválida (-90…90)." };
+    const venueLng = optCoordinate(form.get("venue_longitude"), -180, 180);
+    if (venueLng === undefined) return { ok: false, message: "Longitud inválida (-180…180)." };
+    const venueCountryRaw = String(form.get("venue_country") ?? "").trim().toUpperCase();
+    const venueCountry =
+      venueCountryRaw === "" || venueCountryRaw === "__NONE" ? null : venueCountryRaw;
+    if (venueCountry !== null && !/^[A-Z]{2}$/.test(venueCountry)) {
+      return { ok: false, message: "País de la ubicación inválido (ISO2, p. ej. PE)." };
+    }
+    const { COUNTRIES } = await import("@/lib/countries");
+    const countryName = venueCountry
+      ? (COUNTRIES.find((c) => c.code === venueCountry)?.name ?? venueCountry)
+      : null;
+    const venueName = [venueAddress, venueDistrict, venueCity, countryName]
+      .filter((x): x is string => typeof x === "string" && x.trim() !== "")
+      .join(", ")
+      .slice(0, 200);
+    // Ubicación + pantalla en una sola transacción (antes: dos inserts sueltos).
+    const screenId = await inv.createScreenWithVenue(
+      t.storeId,
+      {
+        name: venueName,
+        city: venueCity,
+        district: venueDistrict,
+        address: venueAddress,
+        latitude: venueLat,
+        longitude: venueLng,
+        country: venueCountry,
+        ownership,
+        supplier_company_id: supplierId,
+      },
+      {
         name,
         width_m: width,
         height_m: height,
@@ -197,7 +182,7 @@ export async function createScreenAction(form: FormData): Promise<ScreensState> 
         orientation,
         modality,
         technology,
-        ownership: supplierId ? "supplier" : "own",
+        ownership,
         supplier_company_id: supplierId,
         price_pen: price,
         duration_sec: duration,
@@ -206,11 +191,8 @@ export async function createScreenAction(form: FormData): Promise<ScreensState> 
         is_active: true,
         source: "manual",
         enrichment_status: "pending",
-      })
-      .select("id")
-      .maybeSingle();
-    if (error || !created) { log.warn("createScreenAction", { fail: `DB write: ${error?.message ?? "pantalla sin id"}` }); return { ok: false, message: `DB write: ${error?.message ?? "pantalla sin id"}` }; }
-    const screenId = (created as { id: string }).id;
+      },
+    );
     // Enriquecimiento geoespacial + comercial best-effort (no bloquea la
     // creación): Mapbox → métricas → tags/narrativa/embedding.
     // `after()` lo agenda tras la respuesta; sin él, fire-and-forget.
@@ -258,28 +240,12 @@ export async function updateScreenPlaybackAction(input: {
     return { ok: false, message: "Impactos inválidos: cantidad por día (entero > 0)." };
   }
   try {
-    const db = getSupabase();
-    const { data: cur } = await db
-      .from("inv_screens")
-      .select("id,enrichment_status")
-      .eq("store_id", t.storeId)
-      .eq("id", screenId)
-      .maybeSingle();
+    const cur = await inv.getScreenState(t.storeId, screenId);
     if (!cur) return { ok: false, message: "Pantalla no encontrada en esta tienda." };
-    if ((cur as { enrichment_status?: unknown }).enrichment_status === "pending") {
+    if (cur.enrichment_status === "pending") {
       return { ok: false, message: "Generando información inteligente, espera unos segundos e inténtalo de nuevo." };
     }
-    const { error } = await db
-      .from("inv_screens")
-      .update({
-        duration_sec,
-        plays_per_day,
-        impact_day,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("store_id", t.storeId)
-      .eq("id", screenId);
-    if (error) { log.warn("updateScreenPlaybackAction", { fail: `DB write: ${error.message}` }); return { ok: false, message: `DB write: ${error.message}` }; }
+    await inv.patchScreen(t.storeId, screenId, { duration_sec, plays_per_day, impact_day });
     revalidatePath("/screens");
     return { ok: true, message: "Pauta actualizada." };
   } catch (e) {
@@ -304,52 +270,18 @@ export async function deleteScreenAction(input: { screenId: string }): Promise<S
   const screenId = String(input.screenId ?? "").trim();
   if (!screenId) return { ok: false, message: "Falta la pantalla." };
   try {
-    const db = getSupabase();
-    const { data: s, error: serr } = await db
-      .from("inv_screens")
-      .select("id,venue_id")
-      .eq("store_id", t.storeId)
-      .eq("id", screenId)
-      .maybeSingle();
-    if (serr || !s) return { ok: false, message: "Pantalla no encontrada en esta tienda." };
-    const row = s as Record<string, unknown>;
-    const venueId = String(row.venue_id ?? "");
-    const [{ count: lines }, { data: slots }] = await Promise.all([
-      db.from("io_lines").select("id", { count: "exact", head: true }).eq("store_id", t.storeId).eq("screen_id", screenId),
-      db.from("inv_slots").select("id").eq("store_id", t.storeId).eq("screen_id", screenId),
-    ]);
-    if ((lines ?? 0) > 0) {
-      return { ok: false, message: `No se puede eliminar: tiene ${lines} línea(s) en órdenes.` };
+    if (!(await inv.getScreenState(t.storeId, screenId))) return { ok: false, message: "Pantalla no encontrada en esta tienda." };
+    // Historia comercial: la DB también lo impide (REFERENCE … ON DELETE REJECT en io_line.screen);
+    // este chequeo da el mensaje claro antes de intentar.
+    const history = await inv.screenHistory(t.storeId, screenId);
+    if (history.lines > 0) {
+      return { ok: false, message: `No se puede eliminar: tiene ${history.lines} línea(s) en órdenes.` };
     }
-    const slotIds = ((slots ?? []) as Array<Record<string, unknown>>).map((r) => String(r.id)).filter(Boolean);
-    if (slotIds.length > 0) {
-      const { count: bookings } = await db
-        .from("inv_bookings")
-        .select("id", { count: "exact", head: true })
-        .eq("store_id", t.storeId)
-        .in("slot_id", slotIds);
-      if ((bookings ?? 0) > 0) {
-        return { ok: false, message: `No se puede eliminar: tiene ${bookings} reserva(s).` };
-      }
+    if (history.bookings > 0) {
+      return { ok: false, message: `No se puede eliminar: tiene ${history.bookings} reserva(s).` };
     }
-    // Slots caen por cascada; la ubicación propia se elimina si ninguna
-    // otra pantalla la usa.
-    const { error: derr } = await db
-      .from("inv_screens")
-      .delete()
-      .eq("store_id", t.storeId)
-      .eq("id", screenId);
-    if (derr) { log.warn("deleteScreenAction", { fail: `DB write: ${derr.message}` }); return { ok: false, message: `DB write: ${derr.message}` }; }
-    if (venueId) {
-      const { count: siblings } = await db
-        .from("inv_screens")
-        .select("id", { count: "exact", head: true })
-        .eq("store_id", t.storeId)
-        .eq("venue_id", venueId);
-      if ((siblings ?? 0) === 0) {
-        await db.from("inv_venues").delete().eq("store_id", t.storeId).eq("id", venueId);
-      }
-    }
+    // La ubicación propia se elimina con la pantalla si ninguna otra la usa (transacción).
+    await inv.deleteScreenAndOrphanVenue(t.storeId, screenId);
     revalidatePath("/screens");
     return { ok: true, message: "Pantalla eliminada." };
   } catch (e) {
@@ -372,23 +304,12 @@ export async function setScreenActiveAction(input: {
   const screenId = String(input.screenId ?? "").trim();
   if (!screenId) return { ok: false, message: "Falta la pantalla." };
   try {
-    const db = getSupabase();
-    const { data: s, error: serr } = await db
-      .from("inv_screens")
-      .select("id,enrichment_status")
-      .eq("store_id", t.storeId)
-      .eq("id", screenId)
-      .maybeSingle();
-    if (serr || !s) return { ok: false, message: "Pantalla no encontrada en esta tienda." };
-    if ((s as { enrichment_status?: unknown }).enrichment_status === "pending") {
+    const cur = await inv.getScreenState(t.storeId, screenId);
+    if (!cur) return { ok: false, message: "Pantalla no encontrada en esta tienda." };
+    if (cur.enrichment_status === "pending") {
       return { ok: false, message: "Generando información inteligente, espera unos segundos e inténtalo de nuevo." };
     }
-    const { error } = await db
-      .from("inv_screens")
-      .update({ is_active: input.isActive, updated_at: new Date().toISOString() })
-      .eq("store_id", t.storeId)
-      .eq("id", screenId);
-    if (error) { log.warn("setScreenActiveAction", { fail: `DB write: ${error.message}` }); return { ok: false, message: `DB write: ${error.message}` }; }
+    await inv.patchScreen(t.storeId, screenId, { is_active: input.isActive });
     revalidatePath("/screens");
     return { ok: true, message: input.isActive ? "Pantalla habilitada." : "Pantalla deshabilitada." };
   } catch (e) {

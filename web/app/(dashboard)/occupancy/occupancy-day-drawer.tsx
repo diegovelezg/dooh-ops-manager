@@ -15,9 +15,10 @@ import { AppCardState } from "@/components/app-card";
 import { OccupancyBadge } from "@/components/badges";
 import { formatDate, formatNumber } from "@/lib/format";
 import { getScreenDayDetailAction, type ScreenDayDetail } from "@/lib/order-actions";
+import { useTz } from "@/components/tenant-time";
 
 const ORDER_STATUS: Record<string, string> = {
-  draft: "Borrador (hold 7d)",
+  draft: "Reserva vigente",
   signed: "Firmada",
   cancelled: "Cancelada",
 };
@@ -42,6 +43,7 @@ export function OccupancyDayDrawer({
   day: string;
   onClose: () => void;
 }) {
+  const tz = useTz();
   const [detail, setDetail] = useState<ScreenDayDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -70,7 +72,7 @@ export function OccupancyDayDrawer({
         <SheetHeader>
           <SheetTitle>{screenName}</SheetTitle>
           <SheetDescription>
-            {formatDate(day)} ·{" "}
+            {formatDate(day, tz)} ·{" "}
             {detail
               ? `${formatNumber(detail.reserved)} de ${formatNumber(detail.capacity)} slots ocupados (${pct}%)`
               : "cargando…"}
@@ -98,7 +100,7 @@ export function OccupancyDayDrawer({
                       {[l.io_number, l.brand].filter(Boolean).join(" · ") || (l.source === "booking" ? "Reserva" : "—")}
                     </span>
                     <span className="block text-xs text-muted-foreground tabular-nums">
-                      {formatDate(l.starts)} → {formatDate(l.ends)} · {formatNumber(l.slots)} slot{l.slots === 1 ? "" : "s"}
+                      {formatDate(l.starts, tz)} → {formatDate(l.ends, tz)} · {formatNumber(l.slots)} slot{l.slots === 1 ? "" : "s"}
                     </span>
                   </span>
                   <OccupancyBadge

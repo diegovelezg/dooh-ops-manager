@@ -1,7 +1,7 @@
 // Research de empresa por dominio(s): homepage → LLM firmographics → tabla `domains`.
 // Candidatos: companies.domain + dominio de companies.email + dominios de emails
 // de contactos (collectCandidateDomains) + fallback web por nombre si no hay nada.
-import { getSupabase } from "@/lib/supabase";
+import { surql } from "@/lib/surreal";
 import { extractFirmographics } from "@/lib/ai/enrich";
 import {
   collectCandidateDomains,
@@ -44,41 +44,31 @@ function mapProfile(domain: string, r: Record<string, unknown> | null): DomainPr
   };
 }
 
-function isMissingTable(error: unknown): boolean {
-  const msg = error instanceof Error ? error.message : String(error ?? "");
-  return /could not find the table/i.test(msg) || (msg as string).includes("PGRST205");
-}
+const PROFILE_COLS = `record::id(id) AS domain, domain_type, company_name, industry, description, size, location,
+  source_url, model, confidence, fn::iso(enriched_at) AS enriched_at`;
 
 async function getDomainProfile(domain: string): Promise<DomainProfile | null> {
   const d = normalizeDomain(domain);
   if (!d) return null;
-  const db = getSupabase();
-  const { data, error } = await db.from("ai_domain_cache").select("*").eq("domain", d).maybeSingle();
-  if (error) {
-    if (isMissingTable(error)) return null;
-    throw new Error(`Domains read: ${error.message}`);
-  }
-  if (!data) return null;
-  return mapProfile(d, data as Record<string, unknown>);
+  const row = await surql<Record<string, unknown> | null>(
+    `SELECT ${PROFILE_COLS} FROM ONLY type::record('ai_domain_cache', $d)`,
+    { d },
+  );
+  return mapProfile(d, row ?? null);
 }
 
 export async function getDomainProfiles(domains: string[]): Promise<Map<string, DomainProfile>> {
   const out = new Map<string, DomainProfile>();
   const clean = [...new Set(domains.map(normalizeDomain).filter(Boolean))];
   if (clean.length === 0) return out;
-  const db = getSupabase();
-  for (let i = 0; i < clean.length; i += 100) {
-    const chunk = clean.slice(i, i + 100);
-    const { data, error } = await db.from("ai_domain_cache").select("*").in("domain", chunk);
-    if (error) {
-      if (isMissingTable(error)) return out;
-      throw new Error(`Domains read: ${error.message}`);
-    }
-    for (const r of (data ?? []) as Array<Record<string, unknown>>) {
-      const d = String(r.domain ?? "");
-      const p = mapProfile(d, r);
-      if (p) out.set(d, p);
-    }
+  const rows = await surql<Array<Record<string, unknown>>>(
+    `SELECT ${PROFILE_COLS} FROM ai_domain_cache WHERE id IN $ds.map(|$d| type::record('ai_domain_cache', $d))`,
+    { ds: clean },
+  );
+  for (const r of rows) {
+    const d = String(r.domain ?? "");
+    const p = mapProfile(d, r);
+    if (p) out.set(d, p);
   }
   return out;
 }
@@ -97,7 +87,6 @@ export async function researchDomain(
 ): Promise<{ status: ResearchStatus; profile: DomainProfile | null; error?: string }> {
   const d = normalizeDomain(domain);
   if (!d) return { status: "error", profile: null, error: "Dominio inválido." };
-  const db = getSupabase();
   if (!opts.force) {
     const cached = await getDomainProfile(d).catch(() => null);
     if (cached) return { status: "cached", profile: cached };
@@ -111,31 +100,19 @@ export async function researchDomain(
     log.error(e instanceof Error ? e : String(e), { storeId: opts.storeId ?? null, domain: d });
     return { status: "error", profile: null, error: e instanceof Error ? e.message : "LLM falló." };
   }
-  const { error } = await db.from("ai_domain_cache").upsert(
-    {
-      domain: d,
-      domain_type: "business",
-      company_name: firm.companyName,
-      industry: firm.industry,
-      description: firm.description,
-      size: firm.size,
-      location: firm.location,
-      source_url: page.url,
-      model: firm.model,
-      confidence: firm.confidence,
-      enriched_at: new Date().toISOString(),
-    },
-    { onConflict: "domain" },
-  );
-  if (error) {
-    if (isMissingTable(error)) {
-      return {
-        status: "error",
-        profile: null,
-        error: "Falta la tabla domains: aplicar supabase/migrations (20261123) al contenedor supabase-db.",
-      };
-    }
-    return { status: "error", profile: null, error: `Domains upsert: ${error.message}` };
+  try {
+    await surql(
+      `UPSERT type::record('ai_domain_cache', $d) SET domain_type = 'business', company_name = $company ?? NONE,
+         industry = $industry ?? NONE, description = $description ?? NONE, size = $size ?? NONE,
+         location = $location ?? NONE, source_url = $source ?? NONE, model = $model ?? NONE,
+         confidence = $confidence ?? NONE, enriched_at = time::now()`,
+      {
+        d, company: firm.companyName, industry: firm.industry, description: firm.description, size: firm.size,
+        location: firm.location, source: page.url, model: firm.model, confidence: firm.confidence,
+      },
+    );
+  } catch (e) {
+    return { status: "error", profile: null, error: `Domains upsert: ${e instanceof Error ? e.message : String(e)}` };
   }
   return { status: "ok", profile: await getDomainProfile(d).catch(() => null) };
 }

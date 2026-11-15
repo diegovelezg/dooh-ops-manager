@@ -1,12 +1,12 @@
 import { getMyActiveStore, requireMyStoreAccess } from "@/lib/tenant";
-import { isSupabaseConfigured } from "@/lib/supabase";
+import { isDbConfigured } from "@/lib/surreal";
 import { apiLog } from "@/lib/log";
 
 /** POST /api/brief — corre el muro diario (sys_runs kind='brief').
  *  Throttle: 1x día salvo force (el slot + dedupe evitan duplicados).
  *  Body: { force?: boolean }. */
 export async function POST(req: Request) {
-  if (!isSupabaseConfigured()) {
+  if (!isDbConfigured()) {
     return Response.json({ error: "Base de datos no disponible." }, { status: 500 });
   }
   let force = false;
@@ -27,11 +27,10 @@ export async function POST(req: Request) {
     let rateKey = `brief:${active.id}:anon`;
     let actor: string | undefined;
     try {
-      const { createServerSupabase } = await import("@/lib/supabase-server");
-      const supabase = await createServerSupabase();
-      const { data } = await supabase.auth.getUser();
-      if (data.user?.id) rateKey = `brief:${active.id}:${data.user.id}`;
-      actor = data.user?.email ?? undefined;
+      const { getSessionUser } = await import("@/lib/auth");
+      const user = await getSessionUser();
+      if (user?.id) rateKey = `brief:${active.id}:${user.id}`;
+      actor = user?.email ?? undefined;
     } catch {
       // sin sesión resoluble: cae a :anon (fail-closed en throttle)
     }

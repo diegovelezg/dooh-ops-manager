@@ -1,10 +1,10 @@
 import { getMyActiveStore, requireMyStoreAccess } from "@/lib/tenant";
-import { isSupabaseConfigured } from "@/lib/supabase";
+import { isDbConfigured } from "@/lib/surreal";
 import { parseCompanyKinds } from "@/lib/crm";
 import { parseCompaniesSort } from "@/lib/crm-db";
 import { parseBrandsSort } from "@/lib/brand-db";
 import { minorToMajor, toCsv, type CsvCell } from "@/lib/csv";
-import { toISODateUTC } from "@/lib/format";
+import { todayIn } from "@/lib/format";
 import { apiLog } from "@/lib/log";
 
 // GET /api/export?entity=companies|contacts|brands|orders|screens + mismos filtros
@@ -15,7 +15,7 @@ import { apiLog } from "@/lib/log";
 // alcanza, se declara con `X-Export-Truncated: 1`, nunca silencioso.
 // CSV RFC4180 con coma + BOM para Excel/Sheets.
 export async function GET(req: Request) {
-  if (!isSupabaseConfigured()) {
+  if (!isDbConfigured()) {
     return new Response("Base de datos no disponible.", { status: 500 });
   }
   const url = new URL(req.url);
@@ -32,7 +32,7 @@ export async function GET(req: Request) {
     }
     const storeId = active.id;
     const q = (sp.get("q") ?? "").trim().slice(0, 100);
-    const stamp = toISODateUTC(new Date());
+    const stamp = todayIn(active.timezone);
 
     if (entity === "companies") {
       // Multiselect (?type=a&type=b, ?type=a,b, alias ?tipo). Sin parámetro

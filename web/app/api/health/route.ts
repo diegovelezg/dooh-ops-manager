@@ -1,5 +1,8 @@
-import { getSupabase, isSupabaseConfigured } from "@/lib/supabase";
 import { getMyActiveStore } from "@/lib/tenant";
+import { countCompanies, countContacts } from "@/lib/crm-store";
+import { countScreens } from "@/lib/screens-store";
+import { isDbConfigured } from "@/lib/surreal";
+import { countOrders } from "@/lib/orders-store";
 import { apiLog } from "@/lib/log";
 
 /**
@@ -7,8 +10,8 @@ import { apiLog } from "@/lib/log";
  * Fase 2 DOOH: conteos vivos (empresas, contactos, IOs, pantallas).
  */
 export async function GET(req: Request) {
-  if (!isSupabaseConfigured()) {
-    return Response.json({ error: "Supabase no configurado." }, { status: 500 });
+  if (!isDbConfigured()) {
+    return Response.json({ error: "Base de datos no configurada." }, { status: 500 });
   }
   const url = new URL(req.url);
   const sp = url.searchParams;
@@ -29,24 +32,15 @@ export async function GET(req: Request) {
   const { requireStoreAccess } = await import("@/lib/api/guard");
   const access = await requireStoreAccess(active.id);
   if (access instanceof Response) return access;
-  const db = getSupabase();
-  const countOf = async (table: string): Promise<number> => {
-    try {
-      const { count } = await db.from(table).select("id", { count: "exact", head: true }).eq("store_id", active.id);
-      return count ?? 0;
-    } catch {
-      return 0;
-    }
-  };
   try {
     const [comp, cont, ios, scr, schema] = await Promise.all([
-      countOf("crm_companies"),
-      countOf("crm_contacts"),
-      countOf("io_orders"),
-      countOf("inv_screens"),
+      countCompanies(active.id),
+      countContacts(active.id),
+      countOrders(active.id),
+      countScreens(active.id),
       (async () => {
         const { checkSchema } = await import("@/lib/schema-guard");
-        const gaps = await checkSchema(db);
+        const gaps = await checkSchema();
         return { ok: gaps.length === 0, gaps: gaps.map((g) => g.relation) };
       })().catch(() => ({ ok: true, gaps: [] as string[] })),
     ]);

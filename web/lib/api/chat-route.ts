@@ -20,29 +20,25 @@ export type ChatScope = "store" | "screen" | "company" | "order" | "contact" | "
 /** Tablas por scope (SSOT: una sola rama en vez de ×4 duplicadas). */
 const ENTITY_TABLES: Record<
   Exclude<ChatScope, "store" | "brand">,
-  { table: string; columns: string; patchKey: "screenId" | "companyId" | "orderId" | "contactId"; labelOf: (row: Record<string, unknown>, fallback: string) => string | null }
+  { table: import("@/lib/entity-lookup").EntityTable; patchKey: "screenId" | "companyId" | "orderId" | "contactId"; labelOf: (row: Record<string, unknown>, fallback: string) => string | null }
 > = {
   screen: {
-    table: "inv_screens",
-    columns: "id,store_id,name",
+    table: "inv_screen",
     patchKey: "screenId",
     labelOf: (row) => (typeof row.name === "string" ? row.name : null),
   },
   company: {
-    table: "crm_companies",
-    columns: "id,store_id,name",
+    table: "crm_company",
     patchKey: "companyId",
     labelOf: (row) => (typeof row.name === "string" ? row.name : null),
   },
   order: {
-    table: "io_orders",
-    columns: "id,store_id,io_number",
+    table: "io_order",
     patchKey: "orderId",
     labelOf: (row) => (typeof row.io_number === "string" ? row.io_number : null),
   },
   contact: {
-    table: "crm_contacts",
-    columns: "id,store_id,first_name,last_name",
+    table: "crm_contact",
     patchKey: "contactId",
     labelOf: (row) => {
       const label = [row.first_name, row.last_name].filter((x) => typeof x === "string" && x).join(" ");
@@ -56,8 +52,6 @@ async function resolveEntityStore(
   params: unknown,
 ): Promise<{ storeId: string | null; entityKey: string; focusLabel: string | null; patch: Partial<AgentContext> }> {
   const p = (params ?? {}) as Record<string, unknown>;
-  const { getSupabase } = await import("@/lib/supabase");
-  const db = getSupabase();
   if (scope === "brand" && typeof p.name === "string") {
     const name = decodeURIComponent(p.name);
     return { storeId: null, entityKey: name, focusLabel: name, patch: { brandName: name } };
@@ -67,8 +61,8 @@ async function resolveEntityStore(
   }
   const conf = ENTITY_TABLES[scope as keyof typeof ENTITY_TABLES];
   if (conf && typeof p.id === "string") {
-    const { data } = await db.from(conf.table).select(conf.columns).eq("id", p.id).maybeSingle();
-    const row = (data ?? null) as Record<string, unknown> | null;
+    const { findEntity } = await import("@/lib/entity-lookup");
+    const row = await findEntity(conf.table, p.id);
     if (!row) return { storeId: null, entityKey: p.id, focusLabel: null, patch: { [conf.patchKey]: p.id } as Partial<AgentContext> };
     return {
       storeId: String(row.store_id ?? ""),
@@ -119,8 +113,8 @@ export function createChatRoute(opts?: { scope?: ChatScope }) {
     let entityLabel: string | null = null;
     let patch: Partial<AgentContext> = {};
     try {
-      const { isSupabaseConfigured } = await import("@/lib/supabase");
-      if (!isSupabaseConfigured()) {
+      const { isDbConfigured } = await import("@/lib/surreal");
+      if (!isDbConfigured()) {
         return Response.json({ error: "Base de datos no disponible." }, { status: 500 });
       }
       if (scope === "store") {
@@ -163,8 +157,10 @@ export function createChatRoute(opts?: { scope?: ChatScope }) {
     }
 
     // 4. Agente + sesión (una por usuario×tienda×foco: multi-turn sin body).
+    const { getStoreTimeZone } = await import("@/lib/stores-db");
     const agentCtx: AgentContext = {
       storeId,
+      timezone: await getStoreTimeZone(storeId),
       view: scope === "store" ? "chat" : scope,
       focusLabel: entityLabel,
       ...patch,

@@ -32,6 +32,7 @@ import { matchScore, normalizeSearch, tokenizeSearch } from "@/lib/search-text";
 import { dismissInsightAction, restoreInsightAction } from "@/lib/insights-actions";
 import { audienceMentions, buildDrawerHref, contextItems, insightCta, insightHaystack } from "@/lib/insight-mentions";
 import type { WallInsight } from "@/lib/insights";
+import { useTz } from "@/components/tenant-time";
 
 /** Icono + tinte por kind (mismo lenguaje que las alertas de Hoy). */
 const KIND_META: Record<string, { label: string; icon: LucideIcon; tint: string }> = {
@@ -65,6 +66,7 @@ const VISTA_LABEL: Record<Vista, string> = {
 
 /** Un aviso = una card independiente. Leer (o descartar) es el cierre. */
 function InsightCard({ insight }: { insight: WallInsight }) {
+  const tz = useTz();
   const router = useRouter();
   const [busy, setBusy] = useState<null | "dismiss" | "restore">(null);
   const meta = metaOf(insight.kind);
@@ -125,7 +127,7 @@ function InsightCard({ insight }: { insight: WallInsight }) {
         </span>
         <div className="min-w-0 flex-1">
           <p className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
-            {meta.label} · <span className="tabular-nums normal-case">{formatTimeAgo(insight.createdAt)}</span>
+            {meta.label} · <span className="tabular-nums normal-case">{formatTimeAgo(insight.createdAt, tz)}</span>
           </p>
           <p className="mt-0.5 text-[15px] leading-snug font-semibold tracking-tight">{insight.title}</p>
         </div>

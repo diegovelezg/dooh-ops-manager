@@ -8,6 +8,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { cn } from "cn";
 import { es } from "react-day-picker/locale";
 import { formatDate, parseISODate, toISODateLocal } from "@/lib/format";
+import { useTz } from "@/components/tenant-time";
 
 /** Selector de día del periodo (Inicio/Fin). Mismo en nueva orden y edición. */
 export function PeriodDatePicker({
@@ -25,6 +26,7 @@ export function PeriodDatePicker({
   disabledDays?: (date: Date) => boolean;
   pickerLabel: string;
 }) {
+  const tz = useTz();
   const [open, setOpen] = useState(false);
   const selected = parseISODate(value);
 
@@ -45,7 +47,7 @@ export function PeriodDatePicker({
               )}
             >
               <CalendarIcon aria-hidden />
-              {selected ? formatDate(value) : "Elegir…"}
+              {selected ? formatDate(value, tz) : "Elegir…"}
             </Button>
           }
         />

@@ -12,7 +12,7 @@ import { toTitleCase } from "@/lib/format";
  * Alta de vínculo agencia ↔ anunciante (drawer Vínculos).
  * Un solo FK a empresa existente (regla drawer: inline solo picks de un
  * campo; lo multi-campo vive en /new). Modo servidor del CompanyPicker:
- * fuzzy en Postgres, excluye la propia + ya vinculadas.
+ * fuzzy en SurrealDB, excluye la propia + ya vinculadas.
  */
 export function VinculoForm({
   companyId,

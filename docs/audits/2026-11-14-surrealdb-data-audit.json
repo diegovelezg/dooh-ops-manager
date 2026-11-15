@@ -1,0 +1,4096 @@
+{
+  "audited_at": "2026-11-14T17:56:03.944039-05:00",
+  "scope": {
+    "source": "Docker supabase_db_dooh-ops-manager / database postgres / all 29 public tables + auth.users",
+    "target": "http://127.0.0.1:8000 / namespace dooh / database ops",
+    "environment": "local; no certification of remote/production databases"
+  },
+  "tables": [
+    {
+      "source": "ai_domain_cache",
+      "target": "ai_domain_cache",
+      "source_count": 0,
+      "target_count": 0,
+      "missing": [],
+      "extra": [],
+      "target_table_exists": true
+    },
+    {
+      "source": "ai_llm_usage",
+      "target": "ai_llm_usage",
+      "source_count": 12,
+      "target_count": 15,
+      "missing": [],
+      "extra": [
+        "7fujqyhdo9233plzz1cb",
+        "twyth5hzqyuuuegakkr1",
+        "812r8iy0lxtndi1o7a6h"
+      ],
+      "target_table_exists": true
+    },
+    {
+      "source": "ai_vertical_profiles",
+      "target": "ai_vertical_profile",
+      "source_count": 0,
+      "target_count": 0,
+      "missing": [],
+      "extra": [],
+      "target_table_exists": true
+    },
+    {
+      "source": "crm_companies",
+      "target": "crm_company",
+      "source_count": 21,
+      "target_count": 21,
+      "missing": [],
+      "extra": [],
+      "target_table_exists": true
+    },
+    {
+      "source": "crm_company_links",
+      "target": "crm_company_link",
+      "source_count": 2,
+      "target_count": 2,
+      "missing": [],
+      "extra": [],
+      "target_table_exists": true
+    },
+    {
+      "source": "crm_contact_accounts",
+      "target": "crm_contact_account",
+      "source_count": 9,
+      "target_count": 9,
+      "missing": [],
+      "extra": [],
+      "target_table_exists": true
+    },
+    {
+      "source": "crm_contacts",
+      "target": "crm_contact",
+      "source_count": 11,
+      "target_count": 11,
+      "missing": [],
+      "extra": [],
+      "target_table_exists": true
+    },
+    {
+      "source": "inv_bookings",
+      "target": "inv_booking",
+      "source_count": 0,
+      "target_count": 0,
+      "missing": [],
+      "extra": [],
+      "target_table_exists": true
+    },
+    {
+      "source": "inv_loop_templates",
+      "target": "inv_loop_template",
+      "source_count": 0,
+      "target_count": 0,
+      "missing": [],
+      "extra": [],
+      "target_table_exists": false
+    },
+    {
+      "source": "inv_screen_embeddings",
+      "target": "inv_screen_embedding",
+      "source_count": 0,
+      "target_count": 0,
+      "missing": [],
+      "extra": [],
+      "target_table_exists": false
+    },
+    {
+      "source": "inv_screens",
+      "target": "inv_screen",
+      "source_count": 203,
+      "target_count": 203,
+      "missing": [],
+      "extra": [],
+      "target_table_exists": true
+    },
+    {
+      "source": "inv_slots",
+      "target": "inv_slot",
+      "source_count": 0,
+      "target_count": 0,
+      "missing": [],
+      "extra": [],
+      "target_table_exists": true
+    },
+    {
+      "source": "inv_venues",
+      "target": "inv_venue",
+      "source_count": 203,
+      "target_count": 203,
+      "missing": [],
+      "extra": [],
+      "target_table_exists": true
+    },
+    {
+      "source": "io_agency_orders",
+      "target": "io_agency_order",
+      "source_count": 1,
+      "target_count": 1,
+      "missing": [],
+      "extra": [],
+      "target_table_exists": true
+    },
+    {
+      "source": "io_campaigns",
+      "target": "io_campaign",
+      "source_count": 0,
+      "target_count": 0,
+      "missing": [],
+      "extra": [],
+      "target_table_exists": true
+    },
+    {
+      "source": "io_counters",
+      "target": "io_counter",
+      "source_count": 1,
+      "target_count": 1,
+      "missing": [],
+      "extra": [],
+      "target_table_exists": true
+    },
+    {
+      "source": "io_creatives",
+      "target": "io_creative",
+      "source_count": 0,
+      "target_count": 0,
+      "missing": [],
+      "extra": [],
+      "target_table_exists": true
+    },
+    {
+      "source": "io_invoice_payments",
+      "target": "io_invoice_payment",
+      "source_count": 0,
+      "target_count": 0,
+      "missing": [],
+      "extra": [],
+      "target_table_exists": true
+    },
+    {
+      "source": "io_invoices",
+      "target": "io_invoice",
+      "source_count": 0,
+      "target_count": 0,
+      "missing": [],
+      "extra": [],
+      "target_table_exists": true
+    },
+    {
+      "source": "io_lines",
+      "target": "io_line",
+      "source_count": 2,
+      "target_count": 2,
+      "missing": [],
+      "extra": [],
+      "target_table_exists": true
+    },
+    {
+      "source": "io_orders",
+      "target": "io_order",
+      "source_count": 1,
+      "target_count": 1,
+      "missing": [],
+      "extra": [],
+      "target_table_exists": true
+    },
+    {
+      "source": "io_photo_checks",
+      "target": "io_photo_check",
+      "source_count": 0,
+      "target_count": 0,
+      "missing": [],
+      "extra": [],
+      "target_table_exists": true
+    },
+    {
+      "source": "io_play_logs",
+      "target": "io_play_log",
+      "source_count": 0,
+      "target_count": 0,
+      "missing": [],
+      "extra": [],
+      "target_table_exists": true
+    },
+    {
+      "source": "sys_insight_reads",
+      "target": "insight_read",
+      "source_count": 0,
+      "target_count": 0,
+      "missing": [],
+      "extra": [],
+      "target_table_exists": true
+    },
+    {
+      "source": "sys_insights",
+      "target": "sys_insight",
+      "source_count": 1,
+      "target_count": 1,
+      "missing": [],
+      "extra": [],
+      "target_table_exists": true
+    },
+    {
+      "source": "sys_memberships",
+      "target": "member_of",
+      "source_count": 4,
+      "target_count": 5,
+      "missing": [],
+      "extra": [
+        [
+          "311f253d-f785-4ae6-a3c4-7df2c776bdcf",
+          "c0999a02-ecdd-4e24-981e-542647512c71"
+        ]
+      ],
+      "target_table_exists": true
+    },
+    {
+      "source": "sys_runs",
+      "target": "sys_run",
+      "source_count": 1,
+      "target_count": 1,
+      "missing": [],
+      "extra": [],
+      "target_table_exists": true
+    },
+    {
+      "source": "sys_store_profiles",
+      "target": "sys_store_profile",
+      "source_count": 0,
+      "target_count": 0,
+      "missing": [],
+      "extra": [],
+      "target_table_exists": true
+    },
+    {
+      "source": "sys_stores",
+      "target": "sys_store",
+      "source_count": 1,
+      "target_count": 1,
+      "missing": [],
+      "extra": [],
+      "target_table_exists": true
+    },
+    {
+      "source": "auth_users",
+      "target": "user",
+      "source_count": 5,
+      "target_count": 6,
+      "missing": [],
+      "extra": [
+        "c0999a02-ecdd-4e24-981e-542647512c71"
+      ],
+      "target_table_exists": true
+    }
+  ],
+  "matched_source_records": 478,
+  "field_comparisons": 17607,
+  "field_differences": [
+    {
+      "table": "crm_companies",
+      "key": "4cd63693-f79d-4353-8a13-ac452ebea8f2",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.298431264Z"
+    },
+    {
+      "table": "crm_companies",
+      "key": "9216e95d-65bb-464c-96ec-283fd46f7171",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-11T22:12:54.944857+00:00",
+      "target": "2026-11-14T16:18:16.321097568Z"
+    },
+    {
+      "table": "crm_companies",
+      "key": "9dac2302-6abe-40f3-8399-a90099bec06b",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.282705891Z"
+    },
+    {
+      "table": "crm_companies",
+      "key": "602c3355-4f86-40e3-a3c2-bbd623b005c3",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.246494754Z"
+    },
+    {
+      "table": "crm_companies",
+      "key": "16cc31f9-879c-42f2-88f3-fb58bdbd580c",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.22486756Z"
+    },
+    {
+      "table": "crm_companies",
+      "key": "0342af46-9c0c-427b-ad27-21e8553056f9",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.210032049Z"
+    },
+    {
+      "table": "crm_companies",
+      "key": "f5fd55a4-628b-4264-a99b-ca6c0d6a7ef6",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-11T22:12:54.950968+00:00",
+      "target": "2026-11-14T16:18:16.328615402Z"
+    },
+    {
+      "table": "crm_companies",
+      "key": "0ae111b3-bf6e-4fe6-bbb6-46a6b78e15ee",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.275425594Z"
+    },
+    {
+      "table": "crm_companies",
+      "key": "cd23ce7c-6676-4105-afa6-57d56953d4a8",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.238205137Z"
+    },
+    {
+      "table": "crm_companies",
+      "key": "4afa2c81-9425-4706-aa8c-dbe73adf0c27",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-11T22:12:54.957216+00:00",
+      "target": "2026-11-14T16:18:16.335550783Z"
+    },
+    {
+      "table": "crm_companies",
+      "key": "10ed419f-3bd4-4389-bf65-5de2cdb76ff6",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.260596503Z"
+    },
+    {
+      "table": "crm_companies",
+      "key": "e97e43ce-a0c3-4071-8b55-3068d4d0d41a",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.195372785Z"
+    },
+    {
+      "table": "crm_companies",
+      "key": "fff3350e-51cb-427b-bb2a-cf9d0a70f510",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.253265326Z"
+    },
+    {
+      "table": "crm_companies",
+      "key": "2cec9b14-ea8d-481a-ab7b-f95cabd7de5d",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.217821561Z"
+    },
+    {
+      "table": "crm_companies",
+      "key": "33b64d5c-04f6-4387-933a-846e0d518c01",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.267239787Z"
+    },
+    {
+      "table": "crm_companies",
+      "key": "3b00b9ce-97b6-4e1a-8a39-bafaf7a0c37c",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.202692702Z"
+    },
+    {
+      "table": "crm_companies",
+      "key": "92d612b8-fd84-48f2-a134-ceb43b039406",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.231695832Z"
+    },
+    {
+      "table": "crm_companies",
+      "key": "277a159c-12d8-4e2a-9f20-27ce4f0c41a6",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.185840401Z"
+    },
+    {
+      "table": "crm_companies",
+      "key": "9cd5403c-ec01-4b4a-a18c-1f023b5e0b5e",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.291180127Z"
+    },
+    {
+      "table": "crm_companies",
+      "key": "7b63942a-e62c-4980-84b8-26ba36e24e9a",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.305037658Z"
+    },
+    {
+      "table": "crm_companies",
+      "key": "f309a843-0693-4a0d-8a07-6fd5ed3ee0b6",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-11T22:12:54.937905+00:00",
+      "target": "2026-11-14T16:18:16.312568283Z"
+    },
+    {
+      "table": "crm_company_links",
+      "key": "5870e061-9735-4df0-a4e6-d0079f77537a",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-11T22:12:41.066191+00:00",
+      "target": "2026-11-14T16:18:16.446308295Z"
+    },
+    {
+      "table": "crm_company_links",
+      "key": "33faa455-ec3e-4acc-a77e-24d2e151f780",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-11T22:12:41.068925+00:00",
+      "target": "2026-11-14T16:18:16.451569253Z"
+    },
+    {
+      "table": "crm_contact_accounts",
+      "key": "d0fa3599-d75d-41f7-8b15-0c5b7c2ef2ab",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-11T22:12:55.006267+00:00",
+      "target": "2026-11-14T16:18:16.480926729Z"
+    },
+    {
+      "table": "crm_contact_accounts",
+      "key": "cffde7cb-5b82-4827-b163-8a2e792fdfbd",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-11T22:12:55.04985+00:00",
+      "target": "2026-11-14T16:18:16.495186577Z"
+    },
+    {
+      "table": "crm_contact_accounts",
+      "key": "c45f0715-2039-4af7-b9c2-9024766898a1",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-11T22:12:55.073372+00:00",
+      "target": "2026-11-14T16:18:16.506312525Z"
+    },
+    {
+      "table": "crm_contact_accounts",
+      "key": "f916cf00-4d06-433a-802a-749031f797e5",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-11T22:12:55.017493+00:00",
+      "target": "2026-11-14T16:18:16.485546203Z"
+    },
+    {
+      "table": "crm_contact_accounts",
+      "key": "8c3e4732-b27b-4e22-b326-095af512024f",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-11T22:12:54.99472+00:00",
+      "target": "2026-11-14T16:18:16.47482779Z"
+    },
+    {
+      "table": "crm_contact_accounts",
+      "key": "42d215a8-7d1f-4d61-b000-4a0398fc1a29",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-11T22:12:55.084504+00:00",
+      "target": "2026-11-14T16:18:16.512028679Z"
+    },
+    {
+      "table": "crm_contact_accounts",
+      "key": "093af907-4616-4ba9-b682-fcf9572a47ef",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-11T22:12:55.038323+00:00",
+      "target": "2026-11-14T16:18:16.490283745Z"
+    },
+    {
+      "table": "crm_contact_accounts",
+      "key": "3202f966-3342-4d4d-93e8-641993cd0294",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-11T22:12:54.983116+00:00",
+      "target": "2026-11-14T16:18:16.467067118Z"
+    },
+    {
+      "table": "crm_contact_accounts",
+      "key": "a98df6c9-07dd-4839-865b-67a69bbdb430",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-11T22:12:55.061734+00:00",
+      "target": "2026-11-14T16:18:16.499678241Z"
+    },
+    {
+      "table": "crm_contacts",
+      "key": "0c623870-d4d3-49cb-b103-f22929a9d145",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-11T22:12:55.05669+00:00",
+      "target": "2026-11-14T16:18:16.405142327Z"
+    },
+    {
+      "table": "crm_contacts",
+      "key": "c80bc184-65d5-42bd-b295-d4db05614be7",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-11T22:12:55.079976+00:00",
+      "target": "2026-11-14T16:18:16.420291646Z"
+    },
+    {
+      "table": "crm_contacts",
+      "key": "6ce1f13c-86c5-4327-b555-929d0e5a9c03",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-11T22:12:55.024179+00:00",
+      "target": "2026-11-14T16:18:16.392003389Z"
+    },
+    {
+      "table": "crm_contacts",
+      "key": "8b5ae247-7dec-4698-a1d0-88998839bbe2",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-11T22:12:54.97767+00:00",
+      "target": "2026-11-14T16:18:16.370664762Z"
+    },
+    {
+      "table": "crm_contacts",
+      "key": "b87f2e86-0ee0-4aa6-9708-bd1870c93701",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-11T22:12:55.012752+00:00",
+      "target": "2026-11-14T16:18:16.385327405Z"
+    },
+    {
+      "table": "crm_contacts",
+      "key": "6ebbce15-d619-4f68-817b-fc0c2dda461c",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-11T22:12:55.068538+00:00",
+      "target": "2026-11-14T16:18:16.413231356Z"
+    },
+    {
+      "table": "crm_contacts",
+      "key": "7675ed95-fbe4-4d2e-871b-faaebdf3c003",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-11T22:12:55.04524+00:00",
+      "target": "2026-11-14T16:18:16.398725052Z"
+    },
+    {
+      "table": "crm_contacts",
+      "key": "e3849111-3527-43aa-8d2d-af14b1250fff",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-11T22:12:54.972427+00:00",
+      "target": "2026-11-14T16:18:16.362765501Z"
+    },
+    {
+      "table": "crm_contacts",
+      "key": "94132578-f7f6-420b-9df1-848425fd0ec0",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-11T22:12:54.990084+00:00",
+      "target": "2026-11-14T16:18:16.378765051Z"
+    },
+    {
+      "table": "crm_contacts",
+      "key": "ecbec712-ecaf-4e25-886b-9625a90bcd54",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-11T23:25:56.69209+00:00",
+      "target": "2026-11-14T16:18:16.427396374Z"
+    },
+    {
+      "table": "crm_contacts",
+      "key": "68014607-cf8e-4657-b2a3-c05ccac06535",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-11T22:12:54.966557+00:00",
+      "target": "2026-11-14T16:18:16.352964749Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "78e99a66-8b42-46fd-870e-71dcf664e79b",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:19.350877221Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "53cc4a21-ef62-45a9-8bd8-94ba27cd4204",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.59834+00:00",
+      "target": "2026-11-14T16:18:20.132713119Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "2d96f08d-5938-47b5-845f-972f10ea6854",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:18.8421374Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "4777048e-1c0d-483a-91da-8bdf50398513",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.562438+00:00",
+      "target": "2026-11-14T16:18:18.307898175Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "8e5e4362-e383-428d-a990-84fd857429d0",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:18.636779845Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "93c0ff24-fd4c-4d85-9948-c4426d3e1d59",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:21.235831242Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "c78ae46c-d82e-4f77-bebf-99a81eb92ab6",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:19.687622592Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "da6fe174-9bcb-41cc-80f5-3242fe9d6a53",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:19.826443383Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "5d75bd10-3994-4116-82b8-c67af542b5a2",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.584791+00:00",
+      "target": "2026-11-14T16:18:20.961000781Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "22d7aaeb-2330-44e2-98be-a471558df41a",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.576061+00:00",
+      "target": "2026-11-14T16:18:20.844990102Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "2a953156-c9e2-4b24-a914-2e116021b599",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.61485+00:00",
+      "target": "2026-11-14T16:18:21.343684192Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "031d4652-76a7-4902-9d33-a6e1e2eb69d2",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.605845+00:00",
+      "target": "2026-11-14T16:18:20.376855256Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "5218e9ea-7945-46db-b866-6233f98e5d59",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:18.572086442Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "2637beca-3110-4479-a1b5-af9d51993173",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.610685+00:00",
+      "target": "2026-11-14T16:18:20.894727755Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "75c274ce-a192-4d2e-8d15-3eb3f2e0de92",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:19.639142397Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "f7edd9ac-cc35-4873-aa69-654a095ef27f",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.595045+00:00",
+      "target": "2026-11-14T16:18:20.2955067Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "76664246-9cba-4432-aaf4-2ccbeade0af1",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.605845+00:00",
+      "target": "2026-11-14T16:18:21.315776571Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "c2ae2e62-9cbc-4a12-ba1f-ddae3fbda4ee",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.605845+00:00",
+      "target": "2026-11-14T16:18:20.342551749Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "4056a218-b031-4e5b-afa6-b6936134c9d4",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:18.65224499Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "5187c4e6-72b4-468f-869b-d02dec23a0a6",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.618879+00:00",
+      "target": "2026-11-14T16:18:19.014974052Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "54872f32-a9e0-426f-9e84-684c89669979",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.584791+00:00",
+      "target": "2026-11-14T16:18:20.099492931Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "2db09649-06f1-43f1-aa9b-eea70dd50469",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.556952+00:00",
+      "target": "2026-11-14T16:18:20.520169252Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "cab3d68d-1ea4-4a1c-b41a-3ca7ca45e3d1",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:20.778463328Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "0e0dd1b9-c18d-436e-972c-33e690ce7e4b",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.548114+00:00",
+      "target": "2026-11-14T16:18:18.133010884Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "3703ef49-4b3c-4bdd-ba34-d6f09ec131e0",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.576061+00:00",
+      "target": "2026-11-14T16:18:20.536293701Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "2b73d91e-7969-4b8c-8eb0-b070089443fa",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.605845+00:00",
+      "target": "2026-11-14T16:18:20.392341741Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "efd16444-c720-4a3e-858f-e23fcfcd0f9d",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:19.809613491Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "7fd07a9a-c8a0-4823-81cb-e05fbccdf203",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:19.573162457Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "a72ccf79-80e9-420b-91bf-5f76b6c5ffae",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.576061+00:00",
+      "target": "2026-11-14T16:18:20.809619256Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "08baecb4-955d-425a-9dc4-c304b7b4ff34",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.580771+00:00",
+      "target": "2026-11-14T16:18:20.048522241Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "abf3720d-8abb-4741-8cc2-44dd97bc5bbf",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.580771+00:00",
+      "target": "2026-11-14T16:18:19.982153065Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "430738ec-6d31-444c-b4ba-23eb0f0a3567",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:18.5103285Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "7e36bd5f-ca30-4482-8867-012c4483bf7a",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.605845+00:00",
+      "target": "2026-11-14T16:18:20.827865604Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "386fe574-d127-4a98-b7cb-1ba0abe750d3",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:19.541958139Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "da5aa2d6-8d2b-444e-86dc-eccb74b8c02c",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:19.334917101Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "b71baee5-0b7c-48ac-82bc-d85ad9668335",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.61485+00:00",
+      "target": "2026-11-14T16:18:21.121579095Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "8fbc4cf9-1a1c-4b48-ad49-b12180f1aee7",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.580771+00:00",
+      "target": "2026-11-14T16:18:19.999716239Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "300082c1-9b7e-49a8-81bf-d919f6fb984a",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:19.173688324Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "8546d419-c067-4ffc-8aea-07033e7bde7b",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:19.703886299Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "276b4343-4327-4be2-92ec-0c505d616ac6",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.562438+00:00",
+      "target": "2026-11-14T16:18:18.73415718Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "e1f8f7b1-d536-46ed-8f2a-f1b2bcfa33e7",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.580771+00:00",
+      "target": "2026-11-14T16:18:19.861583012Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "e9050cf3-6a57-4d94-97e6-b3f137c8d3da",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.580771+00:00",
+      "target": "2026-11-14T16:18:19.93266254Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "4d9104e2-f4c6-4123-8b4e-8f417f05c670",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.562438+00:00",
+      "target": "2026-11-14T16:18:19.301389246Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "3e8b6b30-3993-493a-866d-e9afe4a9604f",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:19.316277307Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "8b383fcb-db22-4901-a528-c22f2270d495",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.576061+00:00",
+      "target": "2026-11-14T16:18:19.843250155Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "4fd037c6-a719-45ad-8031-46b2327ef146",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.61485+00:00",
+      "target": "2026-11-14T16:18:21.138117649Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "cb14f8af-93c1-4002-846b-4585a9f2924c",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.590073+00:00",
+      "target": "2026-11-14T16:18:20.116189474Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "f1694894-a00f-4902-a3da-71c26733e390",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.576061+00:00",
+      "target": "2026-11-14T16:18:21.07305688Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "f3d94b7d-abb3-43b5-aa8d-35af0efc9714",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:18.356109493Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "041b3bbb-61a7-4188-837e-851f0478540f",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.61485+00:00",
+      "target": "2026-11-14T16:18:21.089373627Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "33b2c606-02e8-44b8-b54f-ad1ae1446cdb",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:19.400493295Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "be172c30-d8eb-4ef1-bafd-23a873050671",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:18.767358249Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "d268acba-1a54-4a2c-8247-cb3e7b7878d4",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.548114+00:00",
+      "target": "2026-11-14T16:18:18.068984965Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "ca6069fa-48fd-4154-8bae-da89708c6d91",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.548114+00:00",
+      "target": "2026-11-14T16:18:18.418411149Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "d0249198-e57d-4697-8221-13561cb3cd0c",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:18.982952322Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "49375523-8b67-4de8-ac17-dd1ec40acfbe",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.576061+00:00",
+      "target": "2026-11-14T16:18:20.993029951Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "798793c7-8661-47c9-bfc7-252ea73554b5",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:19.655179507Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "02d68c16-c575-4212-9329-78cd4eb9da52",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.562438+00:00",
+      "target": "2026-11-14T16:18:20.472832916Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "6b042993-2b32-4fcf-90c6-1210cd7a3ead",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.61485+00:00",
+      "target": "2026-11-14T16:18:21.025508546Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "8455dede-0775-4d17-891e-5fa04961921a",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:19.588722511Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "831003ae-5b32-447c-aa5f-011e4494eef2",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:18.468376159Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "ace19d35-2a8b-4468-b364-5e6912da0251",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:18.889751994Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "31c9cd88-dd4a-40a2-8176-8f3d0450e1ee",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:19.2840372Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "397d9342-ef3e-4fd0-a005-b9bf0bba08b1",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.584791+00:00",
+      "target": "2026-11-14T16:18:20.065255654Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "61eca118-cb98-4c1b-9137-6a4e2e7c2d77",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.595045+00:00",
+      "target": "2026-11-14T16:18:20.279855347Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "18d8e0df-5f7b-47ba-bb12-436a712c2c83",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.590073+00:00",
+      "target": "2026-11-14T16:18:20.148274943Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "56cbeb8b-3ac9-4fb3-a5dc-a4262f8770fe",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:19.108915582Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "c9f35db4-80c2-4d63-a79c-262a7ff843d9",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.562438+00:00",
+      "target": "2026-11-14T16:18:20.198973546Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "e90d1dd8-bd31-468f-b814-abdd54dbbf0d",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.61485+00:00",
+      "target": "2026-11-14T16:18:20.944374778Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "85dbd9ca-e036-445b-9b88-df95abf867c4",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:19.125257908Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "8a7d619d-4f0d-4ada-b0ba-b5c1a729a734",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.590073+00:00",
+      "target": "2026-11-14T16:18:20.165056895Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "dd8930c2-b030-442b-a190-46fd91bbd805",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:18.557002463Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "34aca7f4-11a1-4b8b-87cc-472924f1b24b",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:20.488197482Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "76cf7e78-c940-4478-a4f7-661e383a3f9a",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.548114+00:00",
+      "target": "2026-11-14T16:18:18.180101643Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "698680b0-901b-41dc-8acd-6acf23a4c088",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:19.72882745Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "d6722e51-129b-444b-b2d4-a84eaa357e06",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:19.091984421Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "9fce3fe4-dccd-4c60-b299-91f175d260a8",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.562438+00:00",
+      "target": "2026-11-14T16:18:18.291471009Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "3a283c2a-b7fb-45b6-bd7c-4bad14f0b518",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.580771+00:00",
+      "target": "2026-11-14T16:18:20.457126743Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "05d1b602-26b7-4266-ba72-5e1572d16271",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:19.190860872Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "4dc84e59-192c-41fa-b1db-d187fc7f8dd1",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:18.5262629Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "2b003c7d-de22-4481-8c8f-b4099a9ae700",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:19.509466724Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "c915b61e-5d91-45d5-8989-3926ead4000d",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:19.79273282Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "ede23a02-b459-4133-953f-3e4e919aaf60",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:19.62283995Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "1e4be85c-5248-4f39-9b47-ed7e73026df5",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.580771+00:00",
+      "target": "2026-11-14T16:18:19.878792699Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "aa6eacac-1115-4087-bad7-ba50837fcf22",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.590073+00:00",
+      "target": "2026-11-14T16:18:20.649262391Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "d2420770-b86e-4122-af8c-a2fdd3f76a0e",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:21.360568353Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "3590bf45-ed33-4243-97dd-680f0299480b",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.605845+00:00",
+      "target": "2026-11-14T16:18:20.976920412Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "c40770d1-668c-4303-836d-17df051ca860",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.576061+00:00",
+      "target": "2026-11-14T16:18:21.25197116Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "02a4eebe-5807-45ce-9768-bb2b84c9ddfd",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.562438+00:00",
+      "target": "2026-11-14T16:18:18.904923922Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "a334ca04-562d-486e-8d3b-47879ed2f99a",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.580771+00:00",
+      "target": "2026-11-14T16:18:20.409174553Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "fbd85e11-6feb-465f-89f9-5fe8329c7ea4",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.580771+00:00",
+      "target": "2026-11-14T16:18:20.01568986Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "4696c546-15ad-4e34-8e25-6dfe0f2bb4c8",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:19.225674713Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "ec90a8d2-58bd-4252-a379-e835c329ad42",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.59834+00:00",
+      "target": "2026-11-14T16:18:21.041662304Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "c6d6e4f6-0174-453f-8424-7947bb7bb1d9",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.59834+00:00",
+      "target": "2026-11-14T16:18:19.367330136Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "2c4bab2b-440e-476f-b70f-f7df98e49f27",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.562438+00:00",
+      "target": "2026-11-14T16:18:19.247246707Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "a512e296-fa0e-4de5-9500-092318ab3c92",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.601843+00:00",
+      "target": "2026-11-14T16:18:20.325858136Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "8516035e-34a1-43dc-9877-ea60a4f4f3cb",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:18.9531986Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "ea01eddc-a0af-45a6-ac80-81b40c533df5",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.548114+00:00",
+      "target": "2026-11-14T16:18:18.032243552Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "3ba5d03b-df33-4ddd-9f2e-7cfea760b4f0",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.584791+00:00",
+      "target": "2026-11-14T16:18:20.032412672Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "053df721-0db5-4982-8ffe-10b7365bbfc6",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.610685+00:00",
+      "target": "2026-11-14T16:18:21.28492334Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "f74bfe3f-c785-4821-baf4-ca8768ca063c",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:18.810799794Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "b75b43d8-0177-425b-a117-413cf338f33e",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:44.577082+00:00",
+      "target": "2026-11-14T16:18:19.967201615Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "40e0d700-49e0-4e69-adfc-9229188b451c",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.601843+00:00",
+      "target": "2026-11-14T16:18:18.999707784Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "3d97e6ca-eb88-4a0c-bcaa-8d5c5b2481c4",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.601843+00:00",
+      "target": "2026-11-14T16:18:20.310189133Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "3dbd680a-c3d0-4e33-9cf7-07480ffa84e9",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.610685+00:00",
+      "target": "2026-11-14T16:18:21.008894042Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "62363c39-e998-4881-8e19-0e1c376205dc",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.562438+00:00",
+      "target": "2026-11-14T16:18:18.783636976Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "750e6c8c-8e4a-415a-b1e5-9abaedf0b3de",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.59834+00:00",
+      "target": "2026-11-14T16:18:20.714609377Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "beb11be8-0ae2-467b-9af1-ad3aed4f8c82",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:19.031994921Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "5c4daaa3-a3ac-48a0-a722-eb95137f4da9",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.61485+00:00",
+      "target": "2026-11-14T16:18:21.186884911Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "c01cd1ff-b360-49e9-b673-aaf00b591731",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.610685+00:00",
+      "target": "2026-11-14T16:18:21.268583464Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "5bfb5ade-a392-499f-be54-388bbeac4326",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:19.267579954Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "2501b377-76c2-468d-83de-39af28a7d0a6",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.595045+00:00",
+      "target": "2026-11-14T16:18:20.230851097Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "a1e9983d-462e-47a3-a606-68ffea0b6bc3",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.556952+00:00",
+      "target": "2026-11-14T16:18:18.258714487Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "b59bbb1e-3e75-4d95-8be7-eb2b1d7f5b30",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:18.588883794Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "91504f65-6706-44a3-874a-a7bd7bdee331",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.618879+00:00",
+      "target": "2026-11-14T16:18:19.491998659Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "b2d1c71a-6e7e-41f2-94b9-f4f873a73cec",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:20.76229221Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "f22b5792-00a1-4ccb-a8b3-b7de0df9c120",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:19.476405765Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "0415ccbd-a8be-4439-8fbb-bff21a763fb5",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:19.745031818Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "027114db-45ca-4b0b-88ed-511afd41e81e",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.584791+00:00",
+      "target": "2026-11-14T16:18:20.55235306Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "9859eb58-b347-4bf0-a669-3cf1ee46a0e4",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.562438+00:00",
+      "target": "2026-11-14T16:18:19.558471224Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "1d8bd5ca-f89f-4448-b8b1-de8e61b87796",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T17:34:13.037086031Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "f897c4ca-c05d-407c-9dce-3165639dd85e",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.548114+00:00",
+      "target": "2026-11-14T16:18:18.212361391Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "744ba579-d59d-476f-87e2-85ddf60bc7e2",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.61485+00:00",
+      "target": "2026-11-14T16:18:20.698998863Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "b757c3a9-04b3-400d-a063-693d8d39eb55",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:19.048869662Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "3657c3f8-6d99-4273-8588-2f0cd8c9efe8",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.562438+00:00",
+      "target": "2026-11-14T16:18:18.484830755Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "0b66e062-8507-47c8-ac06-72a1c09e1d1c",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:18.621075622Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "a68ea739-57b2-4334-a772-2937547ffeb3",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.605845+00:00",
+      "target": "2026-11-14T16:18:21.057266238Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "01315395-aaf4-454b-a057-51a11444e52e",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.562438+00:00",
+      "target": "2026-11-14T16:18:19.672326855Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "e6157511-0434-4f55-8eeb-ce760a0f1911",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:18.605368659Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "8f278561-b428-476a-ac94-14308144e903",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:18.826809834Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "36d7a340-6965-4897-9da4-8bf783f03f86",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.61485+00:00",
+      "target": "2026-11-14T16:18:20.861338339Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "69e2f38e-3c47-483f-9c59-6acca3aab4da",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.595045+00:00",
+      "target": "2026-11-14T16:18:20.214762328Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "05bda273-60ec-415a-8057-8b43bfef1b71",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.595045+00:00",
+      "target": "2026-11-14T16:18:18.243206332Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "08f9f1f7-62fb-415a-83d0-da8ce3e3965e",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.562438+00:00",
+      "target": "2026-11-14T16:18:18.434713776Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "7d1dd20d-0c52-42b1-8c0d-98621623a102",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:20.912036291Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "54385e46-5ca8-41f0-9005-0dac2e19bb11",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.618879+00:00",
+      "target": "2026-11-14T16:18:19.949600431Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "6d284911-e1c3-44b1-ab9f-8232a7425708",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.584791+00:00",
+      "target": "2026-11-14T16:18:21.169885041Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "9a616a90-abb3-4ed2-a6ce-d3a0fcc0bfd9",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:18.340495769Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "e55c720e-ec30-4f03-8ddd-c3356b4d2e98",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:19.761916789Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "07481846-867b-4992-8ecc-faf94f32f8c2",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.584791+00:00",
+      "target": "2026-11-14T16:18:20.73025473Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "0392b07f-58d8-4b26-86d3-8167fef79c3f",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:18.402419389Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "951abedd-03f7-4191-860d-6561339ece20",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.595045+00:00",
+      "target": "2026-11-14T16:18:20.247144414Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "72086d95-d11c-4c4c-9174-8e2efb512eee",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:18.324278681Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "0e7931ee-1506-4c59-b8ef-f99001c6a335",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:18.968357128Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "4505d389-0609-4818-b1a4-5434379cc290",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:18.684131231Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "1c59432c-8f94-423f-9c91-0edf10a5efa7",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:19.777263525Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "a4bae86d-a13d-4be1-8825-7ac0ada4ef18",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.610685+00:00",
+      "target": "2026-11-14T16:18:20.745790435Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "41c84561-d151-46ac-8e60-dc87237e24cb",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:19.443664432Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "7c676a32-40e3-4107-a8a8-2e7416c8e733",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.548114+00:00",
+      "target": "2026-11-14T16:18:18.164157623Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "f79faf1b-2786-4c0c-868f-217a6b6f8698",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:19.208332727Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "ad779322-3950-4652-ad20-63e9b7fe844f",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.562438+00:00",
+      "target": "2026-11-14T16:18:20.360179203Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "ef6131f4-d47b-4697-bda8-858e4edbe640",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:19.606063148Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "2d0ee291-4fdb-4f11-a77e-5f5160991c12",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.556952+00:00",
+      "target": "2026-11-14T16:18:18.227844736Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "6e16ae80-849c-4227-9cd7-b73d983d1d29",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:19.416720772Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "0c146894-5a94-464a-972e-c0538473f12b",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:18.920916692Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "238ca39c-cb19-4972-800d-8f75983ecb2d",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:21.203932691Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "ea02ad21-8c44-48b6-8bfa-5e5cf7e3f5ef",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:19.460262976Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "6c6e5aae-a05e-42a9-9d52-b050a5545860",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:19.157893992Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "d359310e-b209-4f44-a560-47bad133d021",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:19.525974519Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "dd944653-9284-4544-a999-245bc496e980",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T17:34:13.037086031Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "510ce282-8c7c-41eb-bc3e-76b6308e3c6a",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:18.66828349Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "cabbf725-0bac-48ad-b034-3a1f28614d58",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:20.600803645Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "1af2fb39-5b09-4c4a-bb61-90ee875c717d",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.61485+00:00",
+      "target": "2026-11-14T16:18:21.219921361Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "bd2960ea-477b-43b9-a944-734179956c55",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.580771+00:00",
+      "target": "2026-11-14T16:18:19.913497932Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "f8a8322f-cb02-4e78-9294-0c96e2f04a1a",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.548114+00:00",
+      "target": "2026-11-14T16:18:20.424780697Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "135b302d-5aaf-4d65-8c30-3307f5caa5ab",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:19.383881881Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "5c93332b-154a-4c77-a0d9-3f282b1719bc",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:21.15308097Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "72b7de4d-b0b2-4ef0-9d0b-da34b12b223a",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:20.63334134Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "34716478-51bf-4039-b1cb-84adb50454ff",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:18.387727146Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "b5a549be-6b5f-4b9b-8b72-8981de4e9abc",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.59834+00:00",
+      "target": "2026-11-14T16:18:20.877730175Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "bddeb816-2063-4439-aa19-77ad65f9a276",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:18.541668116Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "be7d13a9-951d-4a63-ac72-26f33250be66",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:19.066024911Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "17901083-2fd2-482a-b739-8d1f4fcf4f59",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.548114+00:00",
+      "target": "2026-11-14T16:18:18.085354521Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "f7ec9559-2fb1-40e0-8337-7b789f4113a8",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:20.665688246Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "934783fa-7113-4ad4-b7fe-6c871bd0ea12",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.605845+00:00",
+      "target": "2026-11-14T16:18:20.441771787Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "9a2ea3e3-a42e-4ee6-92c6-55b09f390917",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.562438+00:00",
+      "target": "2026-11-14T16:18:18.275834796Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "e7c784e8-6cb3-4dad-bb5e-d5c3f0e1d866",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.605845+00:00",
+      "target": "2026-11-14T16:18:20.61632079Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "46b60c70-fb3a-49ea-8cbd-c70bd9eb3c2f",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.59834+00:00",
+      "target": "2026-11-14T16:18:20.793904393Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "8c3c6536-6c96-4398-94d6-5fcb2ce1c131",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.610685+00:00",
+      "target": "2026-11-14T16:18:21.29997156Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "b32511c9-a4cd-4b22-a054-0c1d8b1f785c",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.610685+00:00",
+      "target": "2026-11-14T16:18:21.105422127Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "f573ed31-78f7-437e-bc4c-6f7da2bae761",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.576061+00:00",
+      "target": "2026-11-14T16:18:21.377071758Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "cb74b5d5-573a-4a24-ae5e-1d7894068146",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.595045+00:00",
+      "target": "2026-11-14T16:18:18.19545551Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "7de90b38-d3b1-471c-ad80-7c787bc076cc",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.548114+00:00",
+      "target": "2026-11-14T16:18:18.11740351Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "198b6b8e-8d7e-4009-80ee-b1d96be060be",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.590073+00:00",
+      "target": "2026-11-14T16:18:20.504773166Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "a3f0e127-552f-4c04-bd67-e69ae04c775c",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:18.75124071Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "4b6d9723-d6ee-4aed-a11b-252953178d9c",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.584791+00:00",
+      "target": "2026-11-14T16:18:20.082178474Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "49b7f0ff-c079-4960-b79e-c254da42ba32",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.562438+00:00",
+      "target": "2026-11-14T16:18:18.010006105Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "77f55937-fd56-4787-8b94-5b7510b35936",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.59834+00:00",
+      "target": "2026-11-14T16:18:20.583034303Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "0a4b2f82-f04f-4b3b-a625-96860c2e1c6a",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:18.873417668Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "53fe1b09-7ede-4d81-91b1-fce4cdec9963",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:18.371803156Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "38e6f673-d629-4101-a11b-5f369fb32ba4",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.548114+00:00",
+      "target": "2026-11-14T16:18:18.052157103Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "d4febc03-c390-4c89-bcc9-e56db84057e6",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:19.141384327Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "b0999745-865a-4425-8104-a7afffdf67cc",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.610685+00:00",
+      "target": "2026-11-14T16:18:20.683214851Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "d92e9302-8ec1-489b-b895-31d4519d3a8a",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.562438+00:00",
+      "target": "2026-11-14T16:18:18.699526257Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "36d5151f-6741-429f-94b9-18ff9a747f7e",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.576061+00:00",
+      "target": "2026-11-14T16:18:20.928447467Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "e9866dc7-c6d2-4054-8f02-cfce8b80a739",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.595045+00:00",
+      "target": "2026-11-14T16:18:20.26358371Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "1242a696-e7c7-4682-8a01-3f699f38dcf6",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.548114+00:00",
+      "target": "2026-11-14T16:18:18.148107203Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "60829d58-9698-4f9e-934a-b43274f2c908",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.567906+00:00",
+      "target": "2026-11-14T16:18:18.451748756Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "641dfb8b-9c0c-4cf2-8a89-9d2f2e5a8875",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.590073+00:00",
+      "target": "2026-11-14T16:18:18.101097823Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "31fe8ca5-bfb3-4025-a40d-334c5eb4bfa6",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.584791+00:00",
+      "target": "2026-11-14T16:18:20.56839218Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "1102cf73-9893-4a5c-9ccb-6c21b1384219",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.590073+00:00",
+      "target": "2026-11-14T16:18:20.181502831Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "3ac49230-e308-4a03-b41f-13da09a7dd78",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.580771+00:00",
+      "target": "2026-11-14T16:18:19.896333994Z"
+    },
+    {
+      "table": "inv_screens",
+      "key": "426bd2d5-5daf-44d8-bac3-21c1000d47c4",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-08T01:16:03.562438+00:00",
+      "target": "2026-11-14T16:18:18.717791314Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "108111a1-4bba-4e43-a7df-389cf1c1ba08",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.4156414Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "2b5cdead-8b40-4009-8200-38e0ff19760c",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.885202143Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "c6a14f47-d220-4536-be5a-ff44da448d1d",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.743646841Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "6d055f37-760c-4c1d-b77e-7ae1e1601a3f",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.914072557Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "e8deb060-9ab5-4876-9b47-45ef1c883dfc",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.115022567Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "6e06fdc8-8d17-41f4-91ec-203e1c96710d",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.595716479Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "bd656332-6a03-427f-86b8-281e18c973dd",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.921995925Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "513ac2ce-44dd-4825-971f-8fe4474815a0",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.850896059Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "e0a5f082-e6d0-483d-8a3a-e72999a5b707",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.864678521Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "f0b79998-0921-437c-a491-8b5a8663999f",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.056303304Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "3b5b39e2-ab76-496e-9c71-7fce45aaaef6",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.698045875Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "b39575ba-58a3-4514-962a-09a387b13dfd",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.45661411Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "cc3f5a57-fc2d-4cd2-8c64-8cfe5d15ce59",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.649310715Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "1a51a9e3-c02b-4933-b659-67b94dc9ae5b",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.664191074Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "1bbc3cb6-bd2a-4b92-adae-974824656519",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.373401382Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "fd4badae-7cc1-4f8d-a86b-34eda5273a1f",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.804490341Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "633a9691-6aab-4b92-962b-9d84f5cdb68f",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.628508943Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "6ca778a3-3e67-436e-8357-c09697c919c5",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.65658866Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "6c00c83c-3136-42b3-8db6-8aa95b774bb2",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.670960656Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "d9f864dc-b5b1-4d7f-97bd-c76f888615fd",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.718396691Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "7ce1d04c-3e8d-49dd-bed0-a23f4faa69a3",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.791285082Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "98e70d5e-504e-4edb-9bb0-dad2f366c5cc",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.87849054Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "5ee64532-3fd1-4b0f-af49-cb79c0860793",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.942404333Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "d7820bb4-5805-44d1-9476-0d0876724d5b",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.185496512Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "0ec5b9a3-92ec-4f80-a174-f821f1d9dedd",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.308555161Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "241cffb4-a5c6-4e36-b976-33b9896f554c",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.724911236Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "98a5b69b-e951-424a-910c-c1d1661368be",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.871935648Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "c3d307c0-d1b6-4acd-9a5e-e8196a49b9a7",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.496360053Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "2d430e66-77f6-41ff-a4d4-f23712700650",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.243746289Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "ba32beaa-99e2-4589-88b3-c964b21adc7a",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.929843166Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "8ca7f9af-3b17-4a95-909f-c75cb56346c1",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.200000467Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "eb4e75a7-450f-45fe-9fd7-ead809c5a4c3",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.621194974Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "f763b863-2a69-466a-9781-919057e4a10e",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.049381274Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "1ec380a7-89e1-4cb2-aa28-547ce1d50ec7",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.236395543Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "9a60c6d5-6342-4c01-9308-0c376621bf6c",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.779675341Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "b3fef43c-7315-4228-95cb-f4da0b830c91",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.351238734Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "1d2d092b-433e-4b43-b891-089ec8910c04",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.566380442Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "6b61bd06-365d-492f-9c73-e7a58f0f419e",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.482902507Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "742877bc-b826-4d8b-946e-7049989b5887",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.83156042Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "5a1dea8c-b9fa-4c0b-a4ac-4dd964dcd613",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.715583022Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "537e1c3f-fec6-4070-afaf-526f4c86d0e6",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.585983578Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "a2593dab-b183-4222-89a2-c8515c41d59e",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.581666539Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "3ae8849b-a385-48f9-aef7-0ba47fd89963",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.602292023Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "461ef358-4742-408b-977e-5e6b8dcc1c1b",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.657552102Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "d2df3fa4-aa77-4898-a050-f0a046116fc2",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.809046817Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "0ea4cff4-3c41-4348-b301-84c9d9dce057",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.607142927Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "d44f91ce-523c-41bb-a3d5-d63c42f009b8",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.679265546Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "97a4d4f0-3cfd-4485-a8c4-299bc861d978",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.905894009Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "70012b90-27ab-461c-81ff-4fed155559af",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.949333934Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "12009183-2192-40a7-bb40-62093dea1f07",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.536729661Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "d298a0a5-5593-4dfb-872e-14c636a82768",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.757188016Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "3d06f03e-c45e-4a40-9445-fd15da0f2334",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.150267834Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "325a10b7-3df9-46e3-856c-b5ce1e384bab",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.315777579Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "61a1640e-6220-423f-b25a-86b41f90f3f6",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.691463761Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "d25efcc3-fc36-4cbd-a023-1e03958ce332",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.27067535Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "c488f013-7edb-40a2-869e-480808572919",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.844272195Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "48ccc87b-62e1-46c4-bec7-5bbeeddaa117",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.991499582Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "b20fc347-9a28-4de1-82b6-3693bf433aac",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.870951266Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "e8cb2427-6787-417a-9705-a076562103f7",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.178214025Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "2a4027c9-98b5-424f-8b4a-f1fdcc0ebb80",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.593114887Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "f5019577-fd6c-4a19-afb8-7a5915425dad",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.502977086Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "99a3b5e4-c3e9-4855-9d5e-8c5a0af3802b",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.711774118Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "7164d611-6369-484b-a78f-e5337d2b3a83",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.300764019Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "f97b8349-da5a-4d26-8c99-7baaea71ccd2",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.778137124Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "16a06f90-c2f2-42f7-a466-4469ba3cde0f",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.984184046Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "a039b833-fac2-4f09-b6da-b636835d2cd6",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.164236265Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "c6fe87f8-5282-45e3-ae9e-d6579f4c9c61",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.284770429Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "43048ccb-fda2-4d55-939b-6615815757db",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.544002138Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "5138cfe9-e585-491d-b92b-499f9a1ee98a",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.750971606Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "b5d1834b-d904-4e97-83e1-acabbefcb72f",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.206523572Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "2da1d73f-466b-4877-94cc-9edad344b231",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.557777881Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "365905dc-361a-4754-9f00-32b5a6bfc265",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.400961527Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "4560585d-728f-4ba9-81f4-060780af9da6",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.635176077Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "17caa2c9-bc0e-484a-9b2a-00c4535f8af2",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.463228484Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "ac9b8aa6-4e14-45c5-b2f2-f36bc9b25566",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.628775278Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "f0140605-e305-4b2e-9944-7c25bc92889b",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.694886859Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "6e5f58d1-272c-4430-bf68-37061332dc6a",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.013404384Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "7d1de6e8-d7d5-44e8-a064-bd4bdfe08b33",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.822658081Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "b423a6a2-c233-4a81-8f4f-fb07b5b31cd1",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.12272053Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "8ec87b4a-6844-44d6-8d88-2e4dbec57c14",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.801916349Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "54df83b9-6c87-47e3-9ad8-fb2c3a5819bc",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.387118275Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "2cd7e374-7492-4757-ba4d-8b6f75b3b9cf",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.579148027Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "44b94aeb-4d7a-4df0-83f1-c0427855c503",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.035045467Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "781e5eda-e530-4aac-a8f0-937f0b88aa3c",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.078235815Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "5e3523fb-271c-4cf0-b366-7964d015a753",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.824766098Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "de6b755f-6b5f-4c42-a020-c25fdb7bc871",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.450026606Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "8b00e5c7-0f42-4548-865e-6d2dcd63a463",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.44257809Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "631c6c11-de50-4418-b2ab-ac9b03c14881",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.893235325Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "3466464e-11d9-44a4-8ad6-3e83a354b849",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.857539652Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "e006fbac-1c23-423b-a27e-4feb4c3c2b27",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.53258998Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "2fc13cbc-775f-4836-9666-2bca4ce122a1",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.74452072Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "44b50302-1885-4629-9c55-713daf613365",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.106528402Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "4ee98c04-6e76-4a89-924b-a7abcafe3077",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.408750889Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "0bf05e51-f396-4efc-af46-780b1eabacb0",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.91452393Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "5579a35c-5ec2-4a40-bf6e-49c73693735b",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.250602201Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "e364bdfb-4833-44bf-8a26-b3df25689528",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.736091097Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "923bdf88-01ea-4481-a0a9-3685f6feb6cc",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.600079538Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "c8680703-f9a0-48f6-9d33-2e30a2a9e94a",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.851671699Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "16e8289c-1dcc-4ec1-b6dc-fa67e2ae8035",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.428798148Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "a0e26e70-4d06-483e-bc74-fe82c133c529",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.811283633Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "a6d93321-735b-491a-8104-00b37073502f",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.976979838Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "dfe132bf-d63d-4a80-9b7f-f3841bad78dc",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.764123407Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "e635c5b7-117a-4f4e-b777-75b46f826a77",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.701208416Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "1ddee29f-710b-4807-8419-14f688a6916a",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.070256485Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "1fa8c640-1c8d-48ec-8205-6c851fc7fa1f",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.143859849Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "ab241d61-3e56-4478-8030-2c263a959786",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.614499073Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "36ee115d-e6ec-4b5b-aa8f-a949ff4fc27e",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.845224643Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "4323c1c8-53db-4fd3-97d3-8e27bb984538",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.041933548Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "410fa904-d83e-4629-9824-f38749dbd44b",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.366726199Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "9db8c6b4-0a39-478f-b5dc-3fd388e0f81b",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.966067274Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "abf8da9e-b146-4412-8ec7-ed0da88f9e68",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.642247046Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "68ede9df-7f27-459b-8c90-bb77455ac019",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.092633441Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "869b01aa-f795-4ead-918e-28203833598a",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.527910709Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "b8c81e73-a5f5-4cbc-bd71-8f749c08100e",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.830130227Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "e172b40e-d545-41af-9eaf-6f566b61680d",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.559955916Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "ba5ae257-0be8-49ed-acbc-27fa4a27807a",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.892802957Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "cea29c11-8507-4923-93a7-eda946b1218e",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.770698421Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "5dc00d8d-0e14-4c1c-9f62-8dc0620776c0",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.005945728Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "27e6e3c0-0214-466f-9280-db637dc3c06b",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.678033045Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "2e1eac44-2923-4b6b-8c86-87de2bd1c5e8",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.573954076Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "85e06a95-2353-4833-8f05-02636bd62143",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.157092416Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "b1c6a833-d486-4ba9-b9d9-e5a401a3dda3",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.722354504Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "d8b2888b-a373-4791-af84-998f6e4020fe",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.322795319Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "1a0066b2-eb3b-452e-b550-00bd8e284a51",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.671691111Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "8958ed94-bbfc-4495-93f9-a4f4ce8f462d",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.19265065Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "ff90d35d-3bd0-40c6-aa9b-afad1aeeb3d1",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.489105285Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "e1f99d2f-5a51-49b3-8704-3e3a7c8c3aeb",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.229524342Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "87890211-7f6d-4070-b4d2-67a5521c4d42",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.963177686Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "f5666ec3-17a3-4b60-8813-4cb114931b97",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.649358852Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "675ca97c-83a1-49aa-afad-ac53ddcce1e9",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.951645609Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "36c6fe99-e595-4498-abd7-22cc50b87801",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.857791457Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "9b4fcb60-e4b9-4720-9e0f-15322607a27e",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.731260973Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "d46fe6e4-f979-45da-bd21-5c4d6e5dead2",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.817966926Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "ee506544-0f4d-4c22-963a-bc0f27239c2e",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.330361743Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "3623811c-bb7d-40be-8ef4-7b29ebbb7c75",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.999215325Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "caa97eba-2b90-4813-a8f9-68db1d2114bd",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.344367313Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "63341409-56b0-4212-a247-ce0cf33c6bf0",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.621385134Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "ee9d3503-3ecc-4a8b-92cf-14ce526d4bb6",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.944673928Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "c34834b9-4063-4a72-8e9b-0f9ab32c61ac",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.784710628Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "f2bde86f-9c4c-492f-8dad-16842a8bcd16",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.571008918Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "1a1dd37c-2d0e-4201-9f40-74e219448580",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.635784578Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "0f448300-b2a8-43c3-9ed0-589cb1543ffb",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.130163285Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "3ba1caeb-db3f-421b-a410-b535d2b96881",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.704528741Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "5d92edc9-aa64-4dcb-a992-3b79cb5370af",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.277981157Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "7ad510a4-c4be-4f9b-97bb-42119b4d64a5",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.936959035Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "dda75b90-76ea-4898-9947-4c72e74fcdef",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.729234455Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "8161a818-44ad-4e43-ae24-83ee90f39e58",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.664886459Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "7562387f-c88d-428a-be46-b9c9f3e44da2",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.394394192Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "547f70bc-8015-4bbb-aed0-72a4f0e58d2c",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.028003287Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "b7e2f1f2-e1b3-4907-a1f3-6d5e55e3bc11",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.75761194Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "ab4b26f3-f212-4696-8e3c-3d8f162d7092",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.609184404Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "ad085acd-8475-45f6-b0f2-b5501945f02e",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.838349242Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "484be5b7-59e4-44f1-89e9-910cdc351ed2",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.359703779Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "00f5bb5b-b212-4a0e-a34c-ec24088dd216",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.552885657Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "eb7ec5db-bd51-4187-81a6-172d1ef99f74",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.708186706Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "834c05d4-a2f2-4d06-aa31-a7d5585dffe6",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.816071427Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "66f5152d-10a1-40a5-b9dd-57486ab3eea0",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.213343294Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "b0668341-59e0-474b-ab19-da570531ea24",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.750494663Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "c08b8a45-41aa-4be2-99fa-477eb9efb73f",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.170812439Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "6ad86636-969b-42b3-a70e-563fe2ca03b2",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.899236413Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "66e9d61b-cc80-4e32-97be-0b0ae224474f",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.469710739Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "aa66af5e-9ecc-4573-adaa-777ba8aaec9f",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.257221205Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "5c65e654-5746-40b1-991d-6b971e7b3201",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.770645819Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "8607802b-2d46-4b26-9143-d209c9adc00a",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.969660561Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "8561dc71-f9c3-4d59-abe2-7fff8726b571",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.085449103Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "b32d9b56-ec94-4ff2-aed6-3e975ef88799",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.786713091Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "b45f2928-766e-407a-8500-04c2c4582ffd",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.020067297Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "b65f1d2a-a2c2-4228-9d0e-2c8011b26b3b",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.641884307Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "f3870bbe-28aa-4d98-9512-bde66ea07d2d",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.879232735Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "6d0694e6-b09d-4242-be7e-a11ca3a8213a",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.421818698Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "a80333b1-fdd3-4ca4-a189-6d4a9c9b19e8",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.68462201Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "b74a7047-3d83-44a2-8511-84f608966f57",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.380323323Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "faa780a3-e5f6-42ce-8c0f-24a6dcd52cd7",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.837125746Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "e7087b93-8ffe-4450-8908-86c5067f7bd3",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.510024866Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "d1454e92-e04e-40e1-9236-2923dc30f84b",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.516675169Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "1e805e52-c041-4092-ae3a-42cb39153d83",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.476404592Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "748c3bc1-7f93-4973-9bf0-5dd4c095aaa5",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.337086886Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "7ae96ecd-e802-4544-b7b5-c32db1a61b8a",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.588489811Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "9757959e-e4df-4a2d-a2d5-972512d8f531",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.435711139Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "59f7117d-471a-4062-8ef6-9c4450c59b64",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.956084657Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "8745de63-d8c0-4687-a944-cfcbb17c6854",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.5509064Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "a6224424-8036-42ef-9ac0-2f478f618309",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.797950606Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "baa84cb2-034d-47b0-8482-b4a26f0eeae4",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.136941418Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "dda7bc94-ff86-4c8e-a219-20a33052fa58",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.545887507Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "562fc9d3-c8fc-4fc6-8369-11ab838f16b3",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.958783847Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "041ed821-a5db-47b7-a19b-a8e1c2c77944",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.292980957Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "7d6e40f4-40e8-4225-9ba8-f4e85df3a4d1",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.905743488Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "b066e038-a5ad-458c-ac48-584600365982",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.614712029Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "806743b9-d0a4-4bca-b2c8-713e3303442d",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.899861919Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "c7d00ca0-1f60-419a-bbd7-bb6ef5f48f76",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.264197615Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "1393a3e0-8d95-4806-b40a-30bbfe5c8b91",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.737467621Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "ced766eb-c220-4d7d-ad82-2ddeedead1c3",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.92074186Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "8ee00ea3-06b9-4ca1-b295-292b33381d46",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.885958098Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "d61ff6e8-9184-442d-a1d5-bf4b53d25c21",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.564384324Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "c38d76c1-b5fa-4b9a-b28d-1dfe8febfb0a",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.099659641Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "e48d5c35-d684-439f-8817-dceb6d251ba0",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.764305182Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "d8c3ebba-8ced-4c50-9036-66c45df4a962",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.864441331Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "a207ca18-4d2b-4cf1-b4ed-ea57a5da5f31",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.063423593Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "24bbcbb1-6120-4f16-8a04-56f3566e9477",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:17.539032086Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "44380124-e99b-4a3f-a3d4-732176776b22",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.935144406Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "ed725175-5335-414f-9a24-77001ae72bc7",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.928328065Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "8fedace8-972d-44eb-86e7-e1c8698a3976",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.687255415Z"
+    },
+    {
+      "table": "inv_venues",
+      "key": "4de0bf84-0fd8-485d-8d3f-c5ae28988b2e",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-07T23:16:53.983571+00:00",
+      "target": "2026-11-14T16:18:16.795078337Z"
+    },
+    {
+      "table": "io_agency_orders",
+      "key": "38bf70ad-1a7c-4e96-a2c2-816445a3dc52",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-11T23:39:04.364588+00:00",
+      "target": "2026-11-14T16:18:21.45978725Z"
+    },
+    {
+      "table": "io_orders",
+      "key": "42b1065c-c19a-4603-a60e-4068cda97ac0",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-11T23:39:04.370938+00:00",
+      "target": "2026-11-14T22:45:33.186901631Z"
+    },
+    {
+      "table": "sys_runs",
+      "key": "c6c6c8d0-c908-4e14-a890-b85ecfa7ff9a",
+      "field": "updated_at",
+      "target_field": "updated_at",
+      "source": "2026-11-13T20:07:19.552112+00:00",
+      "target": "2026-11-14T16:39:30.476475768Z"
+    }
+  ],
+  "auth_password_checks": [
+    {
+      "id": "07441b43-116d-4d15-9ee1-78be036e36f3",
+      "source_has_password": true,
+      "target_has_password": true,
+      "hash_equal": true,
+      "source_bcrypt": true,
+      "target_bcrypt": true
+    },
+    {
+      "id": "a95148b6-5367-4de8-94b4-2213c06fa347",
+      "source_has_password": true,
+      "target_has_password": true,
+      "hash_equal": true,
+      "source_bcrypt": true,
+      "target_bcrypt": true
+    },
+    {
+      "id": "5d34c2dc-7b86-4b15-bd49-d582b5e390a2",
+      "source_has_password": true,
+      "target_has_password": true,
+      "hash_equal": true,
+      "source_bcrypt": true,
+      "target_bcrypt": true
+    },
+    {
+      "id": "15aba43f-4eb9-44c8-bedd-a38db340bb6d",
+      "source_has_password": true,
+      "target_has_password": true,
+      "hash_equal": true,
+      "source_bcrypt": true,
+      "target_bcrypt": true
+    },
+    {
+      "id": "e54e310b-6ae6-4662-a9eb-5bae5e88f96c",
+      "source_has_password": true,
+      "target_has_password": true,
+      "hash_equal": true,
+      "source_bcrypt": true,
+      "target_bcrypt": true
+    }
+  ],
+  "integrity": {
+    "reference_checks": 1135,
+    "orphans": [],
+    "cross_tenant_refs": [],
+    "migrations": [
+      {
+        "name": "0006_orders.surql",
+        "checksum_matches": true
+      },
+      {
+        "name": "0008_runs_insights_ai.surql",
+        "checksum_matches": true
+      },
+      {
+        "name": "0009_tenant_timezone.surql",
+        "checksum_matches": true
+      },
+      {
+        "name": "0004_crm.surql",
+        "checksum_matches": true
+      },
+      {
+        "name": "0010_order_span_index.surql",
+        "checksum_matches": true
+      },
+      {
+        "name": "0003_search.surql",
+        "checksum_matches": true
+      },
+      {
+        "name": "0001_identity_tenancy.surql",
+        "checksum_matches": true
+      },
+      {
+        "name": "0005_inventory.surql",
+        "checksum_matches": true
+      },
+      {
+        "name": "0007_order_functions.surql",
+        "checksum_matches": true
+      },
+      {
+        "name": "0002_member_invariants.surql",
+        "checksum_matches": true
+      }
+    ],
+    "source_line_total_minor": 449982,
+    "target_line_total_minor": 449982,
+    "source_screen_price_sum": 72440.0,
+    "target_screen_price_sum": 72440,
+    "source_auth_metadata": {
+      "raw_app_meta_data": {
+        "nonempty_rows": 5,
+        "keys": [
+          "provider",
+          "providers"
+        ]
+      },
+      "raw_user_meta_data": {
+        "nonempty_rows": 5,
+        "keys": [
+          "email",
+          "email_verified",
+          "name",
+          "phone_verified",
+          "sub"
+        ]
+      }
+    },
+    "source_deleted_users": 0
+  },
+  "source_platform_table_counts": {
+    "_realtime.extensions": 1,
+    "_realtime.feature_flags": 2,
+    "_realtime.schema_migrations": 33,
+    "_realtime.tenants": 1,
+    "auth.audit_log_entries": 68,
+    "auth.custom_oauth_providers": 0,
+    "auth.flow_state": 0,
+    "auth.identities": 1,
+    "auth.instances": 0,
+    "auth.mfa_amr_claims": 1,
+    "auth.mfa_challenges": 0,
+    "auth.mfa_factors": 0,
+    "auth.mfa_recovery_code_sets": 0,
+    "auth.mfa_recovery_codes": 0,
+    "auth.oauth_authorizations": 0,
+    "auth.oauth_client_states": 0,
+    "auth.oauth_clients": 0,
+    "auth.oauth_consents": 0,
+    "auth.one_time_tokens": 0,
+    "auth.refresh_tokens": 8,
+    "auth.saml_providers": 0,
+    "auth.saml_relay_states": 0,
+    "auth.schema_migrations": 82,
+    "auth.scim_tokens": 0,
+    "auth.scim_users": 0,
+    "auth.sessions": 1,
+    "auth.sso_domains": 0,
+    "auth.sso_providers": 0,
+    "auth.users": 5,
+    "auth.webauthn_challenges": 0,
+    "auth.webauthn_credentials": 0,
+    "realtime.messages": 0,
+    "realtime.messages_2026_11_10": 0,
+    "realtime.messages_2026_11_11": 0,
+    "realtime.messages_2026_11_12": 0,
+    "realtime.messages_2026_11_13": 0,
+    "realtime.messages_2026_11_14": 0,
+    "realtime.messages_2026_11_15": 0,
+    "realtime.messages_2026_11_16": 0,
+    "realtime.schema_migrations": 96,
+    "realtime.subscription": 0,
+    "storage.bucket_lifecycle_states": 0,
+    "storage.buckets": 0,
+    "storage.buckets_analytics": 0,
+    "storage.buckets_vectors": 0,
+    "storage.iceberg_namespaces": 0,
+    "storage.iceberg_tables": 0,
+    "storage.lifecycle_abandoned_artifacts": 0,
+    "storage.migrations": 81,
+    "storage.objects": 0,
+    "storage.s3_multipart_uploads": 0,
+    "storage.s3_multipart_uploads_parts": 0,
+    "storage.vector_indexes": 0,
+    "supabase_functions.hooks": 0,
+    "supabase_functions.migrations": 2,
+    "supabase_migrations.schema_migrations": 119,
+    "vault.secrets": 0
+  },
+  "snapshot_sha256": {
+    "source.json": "c914ef6228e50d47bcca764036d5d4d10e92710d6ef38d38de5a3168636058d2",
+    "target.json": "63dd2dc02c952fb911410ec04cb7d066c7b41ca0413b6e518b917adfadb339ef"
+  },
+  "auth_exclusions": [
+    "auth.users fields other than id, email, created_at, encrypted_password",
+    "auth.identities",
+    "auth.audit_log_entries",
+    "auth.sessions",
+    "auth.refresh_tokens",
+    "auth.mfa_amr_claims"
+  ],
+  "mutations": "No data or schema writes. Started and stopped source PostgreSQL; target queries were SELECT/INFO in a transaction."
+}

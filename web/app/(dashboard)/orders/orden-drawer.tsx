@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Ban, Bot, CircleCheckBig, FileDown, FileText, Package, Paperclip, Pencil, PenLine, Receipt, Trash, X } from "lucide-react";
 import { AppCard, AppCardState } from "@/components/app-card";
@@ -62,12 +62,15 @@ const InvoiceForm = dynamic(() => import("./invoice-form").then((m) => m.Invoice
   loading: () => <FormLoading label="Cargando factura" />,
 });
 import { hasMinRole, isMemberRole, type MemberRole } from "@/lib/roles";
+import { commercialState, AUTHORIZATION_LABELS, authorizationKind } from "@/lib/order-workflow";
 import { normalizeCurrency } from "@/lib/currency";
 import { effectiveOrderCommissionPct, splitAgencyAmounts } from "@/lib/agency-commission";
 import type { OrderContactRef } from "@/lib/orders-db";
 import { diffDaysInclusive, displayEndOfSafe, formatDate, formatDateTime, formatNumber, paymentTermsLabel, toTitleCase } from "@/lib/format";
+import { useTz } from "@/components/tenant-time";
 
 interface Detail {
+  readiness: { authorized: boolean; materials: boolean; certified: boolean };
   order: Record<string, unknown>;
   advertiser_name: string | null;
   billing_name: string | null;
@@ -98,11 +101,6 @@ interface Detail {
   };
 }
 
-const STATUS_LABEL: Record<string, string> = {
-  draft: "Borrador",
-  signed: "Firmada",
-  cancelled: "Cancelada",
-};
 
 function str(v: unknown): string {
   return typeof v === "string" && v ? v : "—";
@@ -186,7 +184,9 @@ function AttachUrlDialog({
 }
 
 export function OrdenDrawer({ orderId, myRole, onClose }: { orderId: string; myRole: MemberRole | null; onClose: () => void }) {
+  const tz = useTz();
   const router = useRouter();
+  const initialBillingTab = useSearchParams().get("tab") === "cobranza";
   const [detail, setDetail] = useState<Detail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<"resumen" | "produccion" | "cobranza" | "agentes">("resumen");
@@ -228,7 +228,7 @@ export function OrdenDrawer({ orderId, myRole, onClose }: { orderId: string; myR
   useEffect(() => {
     const ac = new AbortController();
     const h = setTimeout(() => {
-      setTab("resumen");
+      setTab(initialBillingTab ? "cobranza" : "resumen");
       setDetail(null);
       setEditingFicha(false);
       void load(ac.signal);
@@ -237,7 +237,7 @@ export function OrdenDrawer({ orderId, myRole, onClose }: { orderId: string; myR
       clearTimeout(h);
       ac.abort();
     };
-  }, [load]);
+  }, [load, initialBillingTab]);
 
   const openLinesDialog = useCallback(async () => {
     setLinesOpen(true);
@@ -246,7 +246,7 @@ export function OrdenDrawer({ orderId, myRole, onClose }: { orderId: string; myR
     setScreensLoading(true);
     setScreensError(null);
     try {
-      const res = await fetch("/api/screens?limit=200", { cache: "no-store" });
+      const res = await fetch("/api/screens", { cache: "no-store" });
       if (!res.ok) throw new Error("No se pudieron cargar las pantallas.");
       const data = (await res.json()) as { screens?: Array<{ id: string; name: string; detail: string | null; code: string | null; price_pen: number | null }> };
       setScreens(Array.isArray(data.screens) ? data.screens : []);
@@ -362,22 +362,23 @@ export function OrdenDrawer({ orderId, myRole, onClose }: { orderId: string; myR
   };
 
   const o = detail?.order;
+  const requiredDoc = o ? authorizationKind(o) : null;
+  const requiredDocLabel = requiredDoc ? AUTHORIZATION_LABELS[requiredDoc] : "autorización comercial";
   const orderCurrency = normalizeCurrency((o as Record<string, unknown> | undefined)?.currency ?? "PEN");
   const lines = detail?.lines ?? [];
   const oms = detail?.io_agency_orders ?? [];
   const creatives = detail?.creatives ?? [];
   const photos = detail?.photos ?? [];
   const invoices = detail?.invoices ?? [];
-  const pendingCreative = creatives.some((c) => c.qc_status !== "approved" || c.legal_status !== "approved");
   const gross = lines.reduce((a, l) => a + Number(l.rate_minor ?? 0), 0);
   const st = o
     ? orderStage({
         status: (o.status as string | null) ?? null,
         signed: o.status === "signed",
-        hasOm: oms.length > 0,
-        materialsOk: creatives.length > 0 && !pendingCreative,
-        ...orderTiming(o, lines, nowMs),
-        certified: (detail?.photos_count ?? 0) > 0,
+        hasOm: detail?.readiness.authorized === true,
+        materialsOk: detail?.readiness.materials === true,
+        ...orderTiming(o, lines, nowMs, tz),
+        certified: detail?.readiness.certified === true,
       })
     : null;
   const bill = o
@@ -387,6 +388,7 @@ export function OrdenDrawer({ orderId, myRole, onClose }: { orderId: string; myR
         starts_at: (o.starts_at as string | null) ?? null,
         payment_terms_days:
           typeof o.payment_terms_days === "number" ? (o.payment_terms_days as number) : null,
+        tz,
       })
     : null;
 
@@ -401,25 +403,25 @@ export function OrdenDrawer({ orderId, myRole, onClose }: { orderId: string; myR
   const isAgencySelf = !!detail?.agency_company_id && detail.agency_company_id === billingId;
   const contactManagerLine = isAgencySelf ? null : contactLine(detail?.contacts.manager);
   const contactPaymentLine = contactLine(detail?.contacts.payment);
-  const ended = o ? orderTiming(o, lines, nowMs).ended : false;
+  const ended = o ? orderTiming(o, lines, nowMs, tz).ended : false;
   const nextAction: string | null = !st
     ? null
     : st.stage === "cancelada"
       ? "Orden cancelada: revisa los saldos de cobranza que sigan pendientes."
       : st.stage === "atrasada"
-        ? "La fecha de inicio ya llegó: falta autorización o material registrado. Registra la URL para emitir."
+        ? "La fecha de inicio ya llegó: falta autorización o material registrado. Revisa la autorización, las compras externas y los materiales de cada línea."
         : st.stage === "programada"
           ? "Preparada para el próximo período contratado. La emisión se indica según las fechas de pauta."
       : st.index === 0
-        ? "Borrador: falta la firma del cliente para avanzar."
+        ? "Cotización: reserva inventario o completa los requisitos para confirmar."
         : st.index === 1
           ? "Firmada: adjunta la autorización para pasar a Materiales."
           : st.stage === "materiales"
-            ? "En Materiales: falta registrar la URL del material para emitir."
+            ? "Falta material aprobado o confirmación del proveedor para cada línea."
             : st.stage === "al_aire"
-              ? `En período de emisión previsto${o?.ends_at ? ` hasta el ${formatDate(o.ends_at)}` : ""}: el cobro corre en paralelo.`
+              ? `En período de emisión previsto${o?.ends_at ? ` hasta el ${formatDate(o.ends_at, tz)}` : ""}: el cobro corre en paralelo.`
               : st.stage === "por_certificar"
-                ? "Terminó la pauta: sube el foto check / PoP para cerrar."
+                ? "Terminó la pauta: registra evidencia y confirma el cumplimiento de cada línea."
                 : "Ciclo operativo completo. Revisa que el cobro esté en Pagado.";
   const progress = bill && gross > 0 ? Math.min(100, Math.round((bill.paid_minor / gross) * 100)) : 0;
   const isDraft = String(o?.status ?? "") === "draft";
@@ -460,7 +462,7 @@ export function OrdenDrawer({ orderId, myRole, onClose }: { orderId: string; myR
       badges={
         st && (
           <span className="flex flex-wrap items-center gap-1.5" aria-label={`Etapa ${orderStageDisplay(st.stage, isDraft).label}${oms.length > 0 ? ", autorizada" : ""}${bill ? `, cobro ${BILLING_LABELS[bill.status]}` : ""}`}>
-            <OrderStageBadge stage={st.stage} isDraft={isDraft} />
+            <OrderStageBadge stage={st.stage} isDraft={isDraft} commercialState={o ? commercialState(o,nowMs) : undefined} />
             {oms.length > 0 && st.stage !== "cancelada" && <OrderAutorizadaBadge />}
             {bill && <OrderBillingBadge status={bill.status} prepaid={bill.isPrepaid} prefixed />}
             {(canEditRole || canDelete) && (
@@ -553,12 +555,12 @@ export function OrdenDrawer({ orderId, myRole, onClose }: { orderId: string; myR
           <>
           {isDraft && canEdit && (
             <section aria-label="Firmar orden" className="flex flex-col gap-2 rounded-xl bg-muted/40 px-4 py-3">
-              <p className="text-sm font-medium">Borrador: esperando la firma del cliente</p>
+              <p className="text-sm font-medium">Cotización: reserva y confirmación pendientes</p>
               <p className="text-xs leading-relaxed text-muted-foreground">
-                Cuando el cliente firme la orden, márcala aquí. Recién entonces podrás registrar el OM/OC.
+                Completa los datos administrativos y confirma el acuerdo desde su ficha. La cotización no retiene inventario.
               </p>
               <div className="flex flex-wrap gap-2">
-                <SubmitButton size="sm" type="button" onClick={() => setSignOpen(true)} disabled={isPending}>
+                <SubmitButton size="sm" type="button" onClick={() => router.push(`/orders/${orderId}#comercial`)} disabled={isPending}>
                   <PenLine aria-hidden />
                   Marcar firmada
                 </SubmitButton>
@@ -626,7 +628,7 @@ export function OrdenDrawer({ orderId, myRole, onClose }: { orderId: string; myR
                 <dt className="text-xs text-muted-foreground">Periodo</dt>
                 <dd className="mt-1 text-sm tabular-nums">
                   {o.starts_at && o.ends_at
-                    ? `${formatDate(o.starts_at)} → ${formatDate(o.ends_at)}${diasOi ? ` · ${formatNumber(diasOi)} días` : ""}`
+                    ? `${formatDate(o.starts_at, tz)} → ${formatDate(o.ends_at, tz)}${diasOi ? ` · ${formatNumber(diasOi)} días` : ""}`
                     : "—"}
                 </dd>
               </div>
@@ -638,7 +640,7 @@ export function OrdenDrawer({ orderId, myRole, onClose }: { orderId: string; myR
                 </>
               )}
               <div><dt className="text-xs text-muted-foreground">Condición de pago</dt><dd className="mt-1 text-sm">{typeof o.payment_terms_days === "number" ? paymentTermsLabel(o.payment_terms_days) : str(o.payment_terms)}</dd></div>
-              <div><dt className="text-xs text-muted-foreground">Estado</dt><dd className="mt-1 text-sm">{STATUS_LABEL[String(o.status ?? "")] ?? str(o.status)}</dd></div>
+              <div><dt className="text-xs text-muted-foreground">Estado</dt><dd className="mt-1 text-sm">{commercialState(o,nowMs)}</dd></div>
               {contactBillingLine && (
                 <div><dt className="text-xs text-muted-foreground">Contacto</dt><dd className="mt-1 text-sm">{contactBillingLine}</dd></div>
               )}
@@ -648,15 +650,15 @@ export function OrdenDrawer({ orderId, myRole, onClose }: { orderId: string; myR
               {typeof o.notes === "string" && o.notes.trim() && (
                 <div><dt className="text-xs text-muted-foreground">Notas</dt><dd className="mt-1 text-sm">{o.notes.trim()}</dd></div>
               )}
-              <div><dt className="text-xs text-muted-foreground">Firma</dt><dd className="mt-1 text-sm tabular-nums">{o.signed_at ? formatDateTime(o.signed_at) : "—"}</dd></div>
+              <div><dt className="text-xs text-muted-foreground">Firma</dt><dd className="mt-1 text-sm tabular-nums">{o.signed_at ? formatDateTime(o.signed_at, tz) : "—"}</dd></div>
               <div>
                 <dt className="text-xs text-muted-foreground">Creada</dt>
-                <dd className="mt-1 text-sm tabular-nums">{o.created_at ? formatDateTime(o.created_at) : "—"}{o.created_by ? ` · ${str(o.created_by)}` : ""}</dd>
+                <dd className="mt-1 text-sm tabular-nums">{o.created_at ? formatDateTime(o.created_at, tz) : "—"}{o.created_by ? ` · ${str(o.created_by)}` : ""}</dd>
               </div>
               {typeof o.updated_at === "string" && o.updated_at && o.updated_at !== o.created_at && (
                 <div>
                   <dt className="text-xs text-muted-foreground">Actualizada</dt>
-                  <dd className="mt-1 text-sm tabular-nums">{formatDateTime(o.updated_at)}{typeof o.updated_by === "string" && o.updated_by ? ` · ${o.updated_by}` : ""}</dd>
+                  <dd className="mt-1 text-sm tabular-nums">{formatDateTime(o.updated_at, tz)}{typeof o.updated_by === "string" && o.updated_by ? ` · ${o.updated_by}` : ""}</dd>
                 </div>
               )}
             </dl>
@@ -733,7 +735,7 @@ export function OrdenDrawer({ orderId, myRole, onClose }: { orderId: string; myR
                 </DrawerTableHeader>
                 <DrawerTableBody>
                   {lines.map((l) => {
-                    const finIncl = displayEndOfSafe(l.ends_at);
+                    const finIncl = displayEndOfSafe(l.ends_at, tz);
                     const dias = typeof l.cant_dias === "number" && l.cant_dias > 0
                       ? l.cant_dias
                       : diffDaysInclusive(typeof l.starts_at === "string" ? l.starts_at : null, finIncl);
@@ -755,7 +757,7 @@ export function OrdenDrawer({ orderId, myRole, onClose }: { orderId: string; myR
                           )}
                         </DrawerTableTd>
                         <DrawerTableTd className="text-xs tabular-nums">
-                          {formatDate(l.starts_at)} → {finIncl ? formatDate(finIncl) : "—"}
+                          {formatDate(l.starts_at, tz)} → {finIncl ? formatDate(finIncl, tz) : "—"}
                         </DrawerTableTd>
                         <DrawerTableTd numeric className="text-xs tabular-nums">
                           {dias ?? "—"}
@@ -808,10 +810,10 @@ export function OrdenDrawer({ orderId, myRole, onClose }: { orderId: string; myR
           <>
           <AppCard
             title={`Autorización (${oms.length})`}
-            description="Autorización de la agencia. Sin ella, la orden no avanza a producción."
+            description={`Requisito del acuerdo: ${requiredDocLabel}. Versión ${Number(o.agreement_revision??0)}.`}
             action={
               canEdit && !isDraft && oms.length > 0 ? (
-                <AttachButton placement="card" onAttach={() => setOmOpen(true)} disabled={isPending} />
+                <AttachButton placement="card" onAttach={() => router.push(`/orders/${orderId}#comercial`)} disabled={isPending} />
               ) : undefined
             }
             tone="sky"
@@ -822,11 +824,11 @@ export function OrdenDrawer({ orderId, myRole, onClose }: { orderId: string; myR
                 <p className="text-sm text-muted-foreground">
                   {isDraft
                     ? "Primero marca la orden como firmada; luego adjunta la autorización."
-                    : "Sin OM/OC registrado. La autorización es el hito que libera Materiales."}
+                    : `Falta ${requiredDocLabel} de la versión vigente.`}
                 </p>
                 {canEdit && !isDraft && (
                   <div>
-                    <AttachButton onAttach={() => setOmOpen(true)} disabled={isPending} />
+                    <AttachButton onAttach={() => router.push(`/orders/${orderId}#comercial`)} disabled={isPending} />
                   </div>
                 )}
               </div>
@@ -875,7 +877,7 @@ export function OrdenDrawer({ orderId, myRole, onClose }: { orderId: string; myR
             description="Adjunta la pieza; queda aprobada y libera la salida al aire."
             action={
               canEdit && creatives.length > 0 ? (
-                <AttachButton placement="card" onAttach={() => setMatOpen(true)} disabled={isPending} />
+                <AttachButton placement="card" onAttach={() => router.push(`/orders/${orderId}#materiales`)} disabled={isPending} />
               ) : undefined
             }
             tone="violet"
@@ -888,7 +890,7 @@ export function OrdenDrawer({ orderId, myRole, onClose }: { orderId: string; myR
                 </p>
                 {canEdit && (
                   <div>
-                    <AttachButton onAttach={() => setMatOpen(true)} disabled={isPending} />
+                    <AttachButton onAttach={() => router.push(`/orders/${orderId}#materiales`)} disabled={isPending} />
                   </div>
                 )}
               </div>
@@ -947,7 +949,7 @@ export function OrdenDrawer({ orderId, myRole, onClose }: { orderId: string; myR
             description="Evidencia fotográfica de la pauta al aire. Corre en paralelo a la cobranza."
             action={
               canEdit && photos.length > 0 ? (
-                <AttachButton placement="card" onAttach={() => setPhotoOpen(true)} disabled={isPending} />
+                <AttachButton placement="card" onAttach={() => router.push(`/orders/${orderId}#lineas`)} disabled={isPending} />
               ) : undefined
             }
             tone="emerald"
@@ -961,7 +963,7 @@ export function OrdenDrawer({ orderId, myRole, onClose }: { orderId: string; myR
                     : "Sin adjuntos. La certificación corre en paralelo a la cobranza."}
                 </p>
                 <div>
-                  <AttachButton onAttach={() => setPhotoOpen(true)} disabled={isPending} />
+                  <AttachButton onAttach={() => router.push(`/orders/${orderId}#lineas`)} disabled={isPending} />
                 </div>
               </div>
             )}
@@ -981,7 +983,7 @@ export function OrdenDrawer({ orderId, myRole, onClose }: { orderId: string; myR
                       ) : (
                         <span className="truncate font-medium">Adjunto</span>
                       )}
-                      <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{formatDateTime(p.taken_at)}</span>
+                      <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{formatDateTime(p.taken_at, tz)}</span>
                       {by(p) && (
                         <span className="shrink-0 truncate text-xs text-muted-foreground" title={`Agregado por ${by(p)}`}>{by(p)}</span>
                       )}
@@ -1062,8 +1064,8 @@ export function OrdenDrawer({ orderId, myRole, onClose }: { orderId: string; myR
                       const st = String(v.status ?? "");
                       const terminal = st === "cancelled" || st === "draft";
                       const invoiceBill = toBillingInvoice(v);
-                      const invoicePaid = invoicePaidMinor(invoiceBill, nowMs);
-                      const displayStatus = terminal ? st : aggregateCobranza([invoiceBill], nowMs).overdueMinor > 0
+                      const invoicePaid = invoicePaidMinor(invoiceBill, nowMs, tz);
+                      const displayStatus = terminal ? st : aggregateCobranza([invoiceBill], nowMs, tz).overdueMinor > 0
                         ? "overdue" : invoicePaid > 0 && invoicePaid < amount ? "partial" : st;
                       return (
                         <DrawerTableRow key={String(v.id)}>
@@ -1077,10 +1079,10 @@ export function OrdenDrawer({ orderId, myRole, onClose }: { orderId: string; myR
                           <DrawerTableTd numeric className="whitespace-nowrap"><Money amountMinor={invoicePaid} currency={String(v.currency)} decimals={2} /></DrawerTableTd>
                           <DrawerTableTd numeric className="whitespace-nowrap">{terminal ? "—" : <Money amountMinor={Math.max(0, amount - invoicePaid)} currency={String(v.currency)} decimals={2} />}</DrawerTableTd>
                           <DrawerTableTd className="text-xs whitespace-nowrap tabular-nums">
-                            {typeof v.issue_date === "string" && v.issue_date ? formatDate(v.issue_date) : "—"}
+                            {typeof v.issue_date === "string" && v.issue_date ? formatDate(v.issue_date, tz) : "—"}
                           </DrawerTableTd>
                           <DrawerTableTd className="text-xs whitespace-nowrap tabular-nums">
-                            {typeof v.due_date === "string" && v.due_date ? formatDate(v.due_date) : "—"}
+                            {typeof v.due_date === "string" && v.due_date ? formatDate(v.due_date, tz) : "—"}
                           </DrawerTableTd>
                           <DrawerTableTd>
                             <span className="flex flex-wrap items-center gap-1">
@@ -1157,12 +1159,13 @@ export function OrdenDrawer({ orderId, myRole, onClose }: { orderId: string; myR
         </DialogContent>
       </Dialog>
 
+      <div className="border-t p-4"><Button render={<Link href={`/orders/${orderId}`} />} nativeButton={false}>Abrir ficha completa de la orden</Button></div>
       <Dialog open={signOpen} onOpenChange={(v) => !v && setSignOpen(false)}>
         <DialogContent className="w-auto max-w-[calc(100%-2rem)] sm:min-w-[420px]">
           <DialogHeader>
             <DialogTitle>Marcar orden como firmada</DialogTitle>
             <DialogDescription>
-              Confirma que el cliente firmó la orden. Pasará a etapa Firmada y pedirá el OM/OC.
+              Confirma el acuerdo con los requisitos administrativos y capacidad validados.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-3">

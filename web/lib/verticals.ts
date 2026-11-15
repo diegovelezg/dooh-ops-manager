@@ -1,10 +1,10 @@
 // Fase A del perfilador: brief del SECTOR por vertical (prior compartido).
 // Se investiga una vez (web + LLM), se cachea en `ai_vertical_profiles` y se
 // reusa entre tenants. La precisión del tenant la pone la Fase B con datos.
-// Solo server/scripts (usa Crawlee + service_role); sin "server-only" para
+// Solo server/scripts (usa Crawlee); sin "server-only" para
 // que los smoke scripts (tsx) puedan importarlo. El retrieval web vive en
 // lib/retrieval.ts (también sin server-only) por la misma razón.
-import { getSupabase } from "@/lib/supabase";
+import { surql } from "@/lib/surreal";
 import { buildQueries, searchSearxng, scrapeCandidates, scrapable, type Scraped } from "@/lib/retrieval";
 import { chatCompletionParams, getLlmConfig, reasoningBody, type ModelRef } from "@/lib/ai/llm-config";
 import { createLogger } from "@/lib/log";
@@ -199,55 +199,41 @@ export async function researchVertical(
   };
 }
 
+/** Clave natural del brief: el taxonomy_id, o la vertical normalizada si no hay mapeo. */
+function verticalKey(taxonomyId: string | null, vertical: string): string {
+  return taxonomyId ?? `vertical:${vertical.trim().slice(0, 120).toLowerCase()}`;
+}
+
 /** Lee el brief cacheado (por taxonomy_id, o por vertical si no hay mapeo). */
 export async function getVerticalProfile(
   taxonomyId: string | null,
   vertical: string,
 ): Promise<{ brief: VerticalBrief; sources: VerticalSource[]; confidence: string | null } | null> {
-  const db = getSupabase();
-  const q = db.from("ai_vertical_profiles").select("brief_json,sources_json,confidence");
-  const { data, error } = taxonomyId
-    ? await q.eq("taxonomy_id", taxonomyId).maybeSingle()
-    : await q.eq("vertical_detected", vertical.trim().slice(0, 120)).maybeSingle();
-  if (error || !data) return null;
-  const r = data as Record<string, unknown>;
+  const r = await surql<Record<string, unknown> | null>(
+    `SELECT brief, sources, confidence FROM ONLY type::record('ai_vertical_profile', $key)`,
+    { key: verticalKey(taxonomyId, vertical) },
+  );
+  if (!r) return null;
   return {
-    brief: r.brief_json as VerticalBrief,
-    sources: (r.sources_json as VerticalSource[]) ?? [],
+    brief: r.brief as VerticalBrief,
+    sources: (r.sources as VerticalSource[]) ?? [],
     confidence: (r.confidence as string) ?? null,
   };
 }
 
-/** Guarda el brief investigado (upsert por taxonomy_id, o por vertical si no hay mapeo). */
+/** Guarda el brief investigado (upsert por clave natural: sin trucos de unique con NULL). */
 export async function saveVerticalProfile(
   taxonomyId: string | null,
   vertical: string,
   research: VerticalResearch,
 ): Promise<void> {
-  const db = getSupabase();
-  const row = {
-    taxonomy_id: taxonomyId,
-    vertical_detected: vertical.trim().slice(0, 120),
-    brief_json: research.brief,
-    sources_json: research.sources,
-    confidence: research.brief.confidence,
-    researched_at: new Date().toISOString(),
-  };
-  if (taxonomyId) {
-    const { error } = await db.from("ai_vertical_profiles").upsert(row, { onConflict: "taxonomy_id" });
-    if (error) throw new Error(`ai_vertical_profiles upsert: ${error.message}`);
-    return;
-  }
-  // Sin taxonomy_id el unique no matchea nulls: buscar por vertical e insertar/actualizar.
-  const { data: existing } = await db
-    .from("ai_vertical_profiles")
-    .select("id")
-    .is("taxonomy_id", null)
-    .eq("vertical_detected", row.vertical_detected)
-    .maybeSingle();
-  const id = (existing as Record<string, unknown> | null)?.id as string | undefined;
-  const { error } = id
-    ? await db.from("ai_vertical_profiles").update(row).eq("id", id)
-    : await db.from("ai_vertical_profiles").insert(row);
-  if (error) throw new Error(`ai_vertical_profiles write: ${error.message}`);
+  await surql(
+    `UPSERT type::record('ai_vertical_profile', $key) SET taxonomy_id = $taxonomy ?? NONE,
+       vertical_detected = $vertical, brief = $brief, sources = $sources, confidence = $confidence ?? NONE,
+       researched_at = time::now()`,
+    {
+      key: verticalKey(taxonomyId, vertical), taxonomy: taxonomyId, vertical: vertical.trim().slice(0, 120),
+      brief: research.brief, sources: research.sources, confidence: research.brief.confidence ?? null,
+    },
+  );
 }

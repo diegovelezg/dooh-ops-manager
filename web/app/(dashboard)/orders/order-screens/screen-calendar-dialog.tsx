@@ -11,10 +11,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { es } from "react-day-picker/locale";
-import { addDays, formatDate, formatNumber, parseISODate, toISODateLocal, todayLima } from "@/lib/format";
+import { addDays, formatDate, formatNumber, parseISODate, toISODateLocal, todayIn } from "@/lib/format";
 import { firstFreeDay, nextFreeWindow, type OccupiedRange } from "@/lib/availability-utils";
 import type { ScreenPick } from "./types";
 import { plural } from "./types";
+import { useTz } from "@/components/tenant-time";
 
 /** Calendario de disponibilidad de una pantalla: sin cupo tachado, periodo elegido en rango.
  *  Los rangos son relativos al cupo pedido (`slots` del caller vía occupancy).
@@ -47,6 +48,7 @@ export function ScreenCalendarDialog({
   onSelectRange?: (from: string, to: string) => void;
   onClose: () => void;
 }) {
+  const tz = useTz();
   const booked = (ranges ?? []).flatMap((r) => {
     const from = parseISODate(r.starts);
     const to = parseISODate(r.ends);
@@ -54,7 +56,7 @@ export function ScreenCalendarDialog({
   });
   const periodFrom = parseISODate(periodStarts);
   const periodTo = parseISODate(periodEnds);
-  const today = todayLima();
+  const today = todayIn(tz);
   const free = screen && loaded && ranges ? firstFreeDay(ranges, today) : null;
   const windowStart = screen && loaded && ranges && duration > 0
     ? nextFreeWindow(ranges, today, duration)
@@ -95,19 +97,19 @@ export function ScreenCalendarDialog({
             />
             <p className="text-xs text-muted-foreground tabular-nums">
               <span className="mr-1 inline-block size-2.5 rounded-sm bg-destructive/20 align-middle" aria-hidden />
-              sin cupo · libre desde {free ? formatDate(free) : "—"}
+              sin cupo · libre desde {free ? formatDate(free, tz) : "—"}
               {capacity !== undefined && capacity !== null && (
                 <> · {minFree !== undefined && minFree !== null ? `quedan ${formatNumber(minFree)} de ${formatNumber(capacity)} slots en el periodo` : `${formatNumber(capacity)} slots/día`}</>
               )}
               {windowStart && (
-                <> · hueco de {formatNumber(duration)} día{plural(duration)}: {formatDate(windowStart)}</>
+                <> · hueco de {formatNumber(duration)} día{plural(duration)}: {formatDate(windowStart, tz)}</>
               )}
             </p>
             {windowStart && (
               <div>
                 <Button type="button" size="sm" variant="outline" onClick={() => onApply(windowStart)}>
                   <CalendarDays aria-hidden />
-                  Usar {formatDate(windowStart)} → {formatDate(addDays(windowStart, duration - 1))}
+                  Usar {formatDate(windowStart, tz)} → {formatDate(addDays(windowStart, duration - 1), tz)}
                 </Button>
               </div>
             )}

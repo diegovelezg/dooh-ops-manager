@@ -1,7 +1,8 @@
 // Data analyst del set perfilador: números de la tienda, determinista.
 // Sin LLM para los números; el synthesizer los interpreta.
 // Fase 2 DOOH: lee companies/contacts/io_orders, no customers/orders.
-import { getSupabase } from "@/lib/supabase";
+import { countCompanies } from "@/lib/crm-store";
+import { selectLines, selectOrders } from "@/lib/orders-store";
 import { DAY_MS } from "@/lib/format";
 
 export interface TenantStats {
@@ -31,19 +32,12 @@ function median(xs: number[]): number | null {
 
 /** Stats del tenant para confrontar sector vs realidad. Lanza si falla (sin ceros falsos). */
 export async function tenantStats(storeId: string): Promise<TenantStats & { sampleN: number; truncated: boolean }> {
-  const db = getSupabase();
-  const { count: n } = await db.from("crm_companies").select("id", { count: "exact", head: true }).eq("store_id", storeId);
-  const total = n ?? 0;
+  const total = await countCompanies(storeId);
 
   // Empresas con al menos 1 IO firmada = compradoras; ≥2 = recurrentes.
-  const { data: ios, error } = await db
-    .from("io_orders")
-    .select("id,billing_company_id,advertiser_company_id,starts_at")
-    .eq("store_id", storeId)
-    .limit(5000);
-  if (error) throw new Error(`tenantStats ios: ${error.message}`);
+  const ios = await selectOrders(storeId, { limit: 5000 });
   const byCompany = new Map<string, string[]>();
-  for (const io of ((ios ?? []) as Array<Record<string, unknown>>)) {
+  for (const io of ios) {
     const cid = (io.billing_company_id as string | null) ?? (io.advertiser_company_id as string | null);
     if (!cid) continue;
     if (!byCompany.has(cid)) byCompany.set(cid, []);
@@ -73,15 +67,10 @@ export async function tenantStats(storeId: string): Promise<TenantStats & { samp
   // Ticket mediano desde líneas de IO.
   let ticketMedian: number | null = null;
   try {
-    const ioIds = ((ios ?? []) as Array<Record<string, unknown>>).map((r) => String(r.id)).filter(Boolean);
+    const ioIds = ios.map((r) => String(r.id)).filter(Boolean);
     if (ioIds.length > 0) {
-      const { data: lines } = await db
-        .from("io_lines")
-        .select("rate_minor")
-        .eq("store_id", storeId)
-        .in("io_id", ioIds.slice(0, 500))
-        .limit(5000);
-      const rates = ((lines ?? []) as Array<Record<string, unknown>>)
+      const lines = await selectLines(storeId, ioIds.slice(0, 500));
+      const rates = lines
         .map((l) => Number(l.rate_minor ?? NaN))
         .filter((v) => Number.isFinite(v) && v > 0);
       ticketMedian = median(rates);

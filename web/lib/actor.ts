@@ -1,14 +1,12 @@
-// Identidad para auditoría: email de la sesión Supabase.
+// Identidad para auditoría: email de la sesión.
 // Mismo patrón que `resolveApprover` (review) y `closed_by` (inbox):
 // `*_by` guarda email legible sin join; sin sesión resoluble (seed, jobs)
 // queda null. Nunca inventar un nombre.
-import { createServerSupabase } from "@/lib/supabase-server";
+import { getSessionUser } from "@/lib/auth";
 
 export async function resolveActor(): Promise<string | null> {
   try {
-    const supabase = await createServerSupabase();
-    const { data } = await supabase.auth.getUser();
-    return data.user?.email ?? null;
+    return (await getSessionUser())?.email ?? null;
   } catch {
     return null;
   }

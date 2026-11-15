@@ -70,23 +70,21 @@ Mapeo:
 
 **Existe (Fase 2 DOOH vigente):**
 
-- **93 migraciones en `supabase/migrations/`** (2026-10-16 → 2026-12-08; la última, `20261208000000_currency_ssot.sql`, crea el DOMAIN `currency_iso` + paridad IO↔factura y entierra `inv_screens.currency`).
-  **24 tablas vivas + vista `ai_llm_usage_daily`:** `sys_` (stores,
-  memberships, store_profiles, runs), `io_` (orders + lines, agency_orders,
-  creatives, photo_checks, play_logs, invoices, campaigns, counters), `inv_`
-  (venues, screens, screen_embeddings, loop_templates, slots, bookings),
-  `crm_` (companies, contacts), `ai_` (domain_cache, vertical_profiles,
-  llm_usage). Sin `market_regions`; país/moneda del tenant en
-  `sys_stores.shop_country` + `sys_stores.shop_currency` (single-país).
+- **SurrealDB 4 como base única** (datos, sesión y permisos por tenant): 8 migraciones en
+  `surreal/migrations/` (ver `surreal/README.md`). Tablas vivas: `sys_` (store, member_of, store_profile,
+  run, insight), `io_` (order + line, agency_order, creative, photo_check, play_log, invoice + payment,
+  campaign, counter), `inv_` (venue, screen con embedding HNSW, slot, booking), `crm_` (company, contact y
+  aristas link/account), `ai_` (domain_cache, vertical_profile, llm_usage). País/moneda del tenant en
+  `sys_store.shop_country` + `sys_store.shop_currency` (single-país).
 - **Gestión comercial DOOH**: ingesta Sheet/CSV (`sheet-import` +
-  `dooh-import`), hard hold anti-sobreventa (`io_check_hold_overlap`),
-  autonumeración de IOs (`io_mint_number`), flujo orden→cobro, marcas.
+  `dooh-import`), hard hold anti-sobreventa (evento `inv_booking_hard_hold`),
+  capacidad por día-pantalla transaccional (`fn::assert_capacity`), autonumeración de IOs (`fn::mint_io_number`), flujo orden→cobro, marcas.
 - **Dashboard Next.js 16 (App Router)**: Hoy, Órdenes, Finanzas, Inventario,
   Empresas, Contactos, Marcas, Settings, Ayuda. Chat DOOH en vivo
   (`dooh_agent`, 6 tools read-only, SSE); worker no-op sin cron.
 - **Transversales vivos**: metering LLM por tenant (`ai_llm_usage`),
   perfiles de tienda, matriz de conflictos `operations.ts` (kind+scope),
-  slot atómico `sys_run_start()`, schema-guard, i18n pendiente (issue #1).
+  slot atómico `fn::run_start`, schema-guard, i18n pendiente (issue #1).
 
 > **Histórico (motor extirpado, solo registro):** conector Medusa,
 > `retention:v3:episodes-mixture`, loop

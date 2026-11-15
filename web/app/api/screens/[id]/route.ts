@@ -9,7 +9,7 @@ import { apiLog } from "@/lib/log";
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   try {
-    const loaded = await requireRouteEntity("inv_screens", id, "store_id", "Pantalla no encontrada.");
+    const loaded = await requireRouteEntity("inv_screen", id, "Pantalla no encontrada.");
     if (loaded instanceof Response) return loaded;
     const { storeId, auth } = loaded;
     const detail = await getScreenDetail(storeId, id);

@@ -47,6 +47,7 @@ const INSTANT = new Set([
   "checkAvailabilityAction",
   "getScreenOccupancyAction",
   "getScreenDayDetailAction", // desglose día-pantalla del drawer (lectura inline)
+  "runOrderWorkflowAction",
   "signOrderAction",
   "cancelOrderAction",
   "reactivateOrderAction",
@@ -78,6 +79,7 @@ const ACTION_MODULES = new Set([
   "lib/members-actions",
   "lib/order-actions",
   "lib/order-flow-actions",
+  "lib/order-workflow-actions",
   "lib/dooh-import-actions",
 ]);
 

@@ -1,12 +1,12 @@
 import { connection } from "next/server";
 import { AppCardState } from "@/components/app-card";
 import { PageHeader } from "@/components/page-header";
-import { isSupabaseConfigured } from "@/lib/supabase";
+import { isDbConfigured } from "@/lib/surreal";
 import { getMyActiveStore, requireMyStoreAccess } from "@/lib/tenant";
 import { listScreenFilterOptions } from "@/lib/screens-db";
 import { NuevaPantallaForm } from "./nueva-form";
 
-// Request-time: usa el cliente Supabase (timers/Date internos) en el render.
+// Request-time: lee sesión (cookies) y DB por request.
 // Cache Components no lo difiere con `instant = false`; ver nota en
 // app/(dashboard)/page.tsx.
 export const instant = false;
@@ -16,7 +16,7 @@ export default async function NuevaPantallaPage() {
   const { active } = await getMyActiveStore(null).catch(() => ({ active: null as null }));
   const storeId = active?.id ?? null;
   const connected = Boolean(storeId);
-  const dbReady = isSupabaseConfigured();
+  const dbReady = isDbConfigured();
 
   let suppliers: Array<{ id: string; name: string }> = [];
   let error: string | null = null;

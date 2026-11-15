@@ -1,5 +1,5 @@
 // Texto de búsqueda compartido (inventario, CRM, marcas, órdenes).
-// Misma normalización ES en TS y en los RPC (lower + imm_unaccent):
+// Normalización ES para los pickers del cliente (misma que `fn::norm` en la DB):
 // tildes, mayúsculas y espacios dejan de importar. Puro, testeable.
 export function normalizeSearch(v: unknown): string {
   return String(v ?? "")
@@ -10,7 +10,7 @@ export function normalizeSearch(v: unknown): string {
     .trim();
 }
 
-/** Tokens de búsqueda, tope 6 (paridad con los RPC). */
+/** Tokens de búsqueda, tope 6 (paridad con `fn::tokens`). */
 export function tokenizeSearch(q: string, max = 6): string[] {
   return normalizeSearch(q)
     .split(" ")

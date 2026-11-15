@@ -1,69 +1,40 @@
-# ADR 0009 — Capacidad vendible DOOH (issue #13)
+# ADR 0009 — Capacidad vendible DOOH (#13)
 
-Fecha: 2026-11-13. Alcance: cerrar el issue #13 sin reescribir históricos.
+Fecha original: 2026-11-13. Actualización: 2026-11-14, flujo híbrido en SurrealDB.
 
-## Modalidad única inicial
+## Unidad y exclusividad
 
-- **1 slot = 1 espacio fijo por loop y día en la misma pantalla.** Es la
-  unidad vendible (ref. sector: espacios fijos por loop, Broadsign Direct).
-  No hay optimizador, ni todos los tipos de compra, ni programática
-  (fuera de alcance del issue).
-- **Capacidad** slots/día por pantalla: `inv_slots` activos; sin slots
-  explícitos, `sys_stores.default_slots_per_screen` (default 10).
-  Pantalla con filas de slots todas inactivas => capacidad 0 (pausada).
-- **Línea** = pantalla + periodo inclusivo + slots (1–100) + total.
-  Sin campo aparte para exclusiva.
+- Un slot representa un espacio fijo por loop y día en una pantalla. La línea contrata pantalla, periodo, slots diarios (1–100) e importe total.
+- Capacidad: `inv_slot` activos; sin slots explícitos, `sys_store.default_slots_per_screen` (default 10). Con slots explícitos todos inactivos, capacidad 0.
+- Pedir tantos slots como capacidad ocupa toda la pantalla. No hay otro campo de exclusividad.
+- Cambiar posteriormente el cupo no cambia la cantidad contratada: una antigua compra de N slots conserva N slots, aunque deje de representar toda la capacidad nueva.
 
-## Exclusividad = convención (sin campo)
+## Cuándo se ocupa inventario
 
-- Pedir **`slots == capacidad`** ocupa toda la pantalla: la regla única
-  (`reservados + pedidos > capacidad` => bloqueado) ya exige día vacío
-  para esa línea e impide cualquier otra incompatible. No hace falta
-  ningún flag: la matemática lo cubre.
-- La UI lo hace explícito sin campo: la tabla muestra
-  "Ocupa toda la pantalla" cuando `slots == capacidad`, y el drawer
-  muestra los slots contratados por línea.
-- Límite conocido: si la capacidad de una pantalla cambia después
-  (más `inv_slots` o nuevo default), una línea vieja con N slots ya no
-  equivale a "toda la pantalla". Se acepta: la capacidad se lee siempre
-  en vivo y la línea conserva lo contratado (sus N slots).
+- Cotización nueva (`draft` sin reserva vigente): no consume capacidad.
+- Reserva explícita: consume hasta `reservation_expires_at`; el formulario propone 24 horas, editables. Conserva actor, fecha y vencimiento.
+- Confirmada (`signed`): consume su cantidad contratada. Cancelada: libera inventario, conserva obligaciones y datos.
+- Los borradores anteriores a `0011` conservan únicamente el vencimiento histórico `created_at + 7d`, identificado como `legacy`. No se renueva ni confirma nada.
+- Una reserva local no implica aceptación del proveedor externo.
 
-## Regla única de capacidad (selección, guardado, ocupación)
+## Autoridad transaccional
 
-- El día-pantalla bloquea si `reservados + pedidos > capacidad`.
-  Función pura: `dayBlocked` en `web/lib/availability.ts`.
-- Fuentes vigentes: líneas de órdenes no canceladas + bookings no
-  cancelados (1 slot c/u). Borrador aparta solo si fresco
-  (`created_at + 7 días > ahora`, `HOLD_DAYS`).
-- La **autoridad** ante concurrentes es la BD:
-  `io_assert_capacity` + `io_replace_lines` con
-  `pg_advisory_xact_lock('io-cap:' || store)` (migración
-  `20270103000000`). El pre-check de la app (`findLineConflicts`)
-  es solo UX; el RPC falla cerrado con `sin slots...`.
-- Creación: post-inserción se invoca `io_assert_capacity` con el
-  `io_id` nuevo como excluido; ante conflicto se compensa (borra la
-  orden) y se responde reintentable. Degradación elegante si la
-  migración aún no está aplicada (el pre-check ya validó).
+`fn::assert_capacity` barre los extremos de intervalos solicitados, órdenes que consumen y bookings no cancelados. En cada intervalo exige `usado + pedido <= cupo`. Respeta los instantes UTC y los días en la zona IANA del tenant, incluido DST.
 
-## Órdenes y documento comercial
+Cada transacción escribe `inv_screen.occupancy_rev`: dos reservas/confirmaciones concurrentes sobre la misma pantalla entran en conflicto OCC. El SDK reintenta conflictos del servidor y comprueba de nuevo los datos. Pantallas distintas tienen registros independientes.
 
-- La orden y su drawer muestran **unidad y cantidad**: Slots por línea
-  (`orden-drawer.tsx`, `OrderScreensTable`) y foto inmutable al firmar:
-  `OrderSnapshot v2` incluye `lines[]` (pantalla, periodo, días, slots,
-  total). `parseOrderSnapshot` acepta v1 (legacy, sin líneas) y v2.
+`fn::reserve_order`, `fn::confirm_order` y modificaciones aceptadas comprueban cupo en su propia transacción. Excluyen las líneas de la misma orden para no contar dos veces la reserva al confirmar. Un evento vuelve a comprobar cualquier transición a `signed`.
 
-## Históricos (sin cambio silencioso)
+La cotización se crea en una transacción (correlativo, orden y líneas), sin compensaciones. Solo se comprueba cupo al reservar, confirmar o cambiar un compromiso vigente. La UI conserva las advertencias al cotizar sin impedir guardar la propuesta.
 
-- Migraciones aditivas: `cant_slots` default 1,
-  `default_slots_per_screen` default 10. **No se reescriben filas.**
-- Interpretación documentada: las órdenes legacy (creadas cuando
-  cualquier solape bloqueaba) se leen hoy como **1 slot**
-  sobre capacidad 10. Pueden compartir pantalla con ventas nuevas; eso
-  es lectura futura, no alteración de su compromiso firmado (el snapshot
-  v1 sigue válido y el PDF prefiere snapshot).
-- Verificación: `npm test` (pure: `dayBlocked`, snapshot v2) +
-  funcional manual por criterio:
-  1. dos anunciantes comparten sin conflicto artificial;
-  2. exceso rechazado incl. concurrentes (RPC);
-  3. `slots == capacidad` bloquea incompatibles;
-  4. orden/doc muestran unidad y cantidad.
+## Acuerdo e históricos
+
+El snapshot v2 conserva pantalla, fechas, días, slots e importe. El PDF muestra slots y usa el snapshot aceptado. El parser conserva soporte de v1, sin inventar líneas ausentes de un snapshot histórico.
+
+Las cantidades legacy permanecen en 1 slot cuando ese era el dato guardado. No se convierten silenciosamente en exclusivas ni se reescriben snapshots firmados. La migración `0011` archiva los snapshots existentes como versión 0.
+
+La implementación anterior de Postgres y sus advisory locks queda en el historial Git; ya no es el mecanismo vigente.
+
+## Evidencia
+
+`tests/surreal-orders.test.ts`, `tests/surreal-timezone.test.ts`, `tests/hybrid-workflow.test.ts`, `tests/hybrid-migration.test.ts` y `tests/order-snapshot.test.ts`: compartir cupo, exceso, exclusividad por cantidad, concurrencia, cotización libre, expiración, confirmación sin doble conteo, zonas horarias y conservación de históricos.

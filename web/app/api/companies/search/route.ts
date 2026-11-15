@@ -1,14 +1,14 @@
 import { getMyActiveStore, requireMyStoreAccess } from "@/lib/tenant";
-import { isSupabaseConfigured } from "@/lib/supabase";
+import { isDbConfigured } from "@/lib/surreal";
 import { isCompanyKind } from "@/lib/crm";
 import { apiLog } from "@/lib/log";
 
 // GET /api/companies/search?q=&kind=&kinds=a,b&exclude=id1,id2&limit=
-// Picker de empresas activas con fuzzy en servidor (mismo RPC que el
+// Picker de empresas activas con fuzzy en servidor (misma búsqueda que el
 // listado). Para `CompanyPicker` en modo servidor: top-N por query,
 // sin precargar el maestro. Solo lectura.
 export async function GET(req: Request) {
-  if (!isSupabaseConfigured()) {
+  if (!isDbConfigured()) {
     return Response.json({ error: "Base de datos no disponible." }, { status: 500 });
   }
   const url = new URL(req.url);

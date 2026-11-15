@@ -1,7 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getSupabase } from "@/lib/supabase";
+import { getSessionUser } from "@/lib/auth";
+import { surql } from "@/lib/surreal";
 import { hasMinRole, isMemberRole, type MemberRole } from "@/lib/roles";
 import { createLogger } from "@/lib/log";
 
@@ -21,53 +22,42 @@ export async function updateMemberRoleAction(input: {
   if (!input.storeId || !input.userId) return { ok: false, message: "Falta tienda o usuario." };
   if (!isMemberRole(input.role)) return { ok: false, message: "Rol inválido." };
   try {
-    const { createServerSupabase } = await import("@/lib/supabase-server");
-    const supabase = await createServerSupabase();
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getSessionUser();
     if (!user) return { ok: false, message: "No autenticado." };
 
-    const db = getSupabase();
-    const { data: caller } = await db
-      .from("sys_memberships")
-      .select("role")
-      .eq("store_id", input.storeId)
-      .eq("user_id", user.id)
-      .maybeSingle();
-    const callerRole = (caller as Record<string, unknown> | null)?.role;
+    const roleOf = async (userId: string): Promise<unknown> =>
+      (
+        await surql<Array<{ role: unknown }>>(
+          `SELECT role FROM member_of
+           WHERE in = type::record('user', $user) AND out = type::record('sys_store', $store)`,
+          { user: userId, store: input.storeId },
+        )
+      )[0]?.role;
+    const callerRole = await roleOf(user.id);
     if (!isMemberRole(callerRole) || !hasMinRole(callerRole, "admin")) {
       return { ok: false, message: "Requiere rol admin o propietario." };
     }
-    const { data: target } = await db
-      .from("sys_memberships")
-      .select("role")
-      .eq("store_id", input.storeId)
-      .eq("user_id", input.userId)
-      .maybeSingle();
-    if (!target) return { ok: false, message: "Miembro no encontrado en esta tienda." };
-    const targetRole = (target as Record<string, unknown>).role;
+    const targetRole = await roleOf(input.userId);
+    if (targetRole === undefined) return { ok: false, message: "Miembro no encontrado en esta tienda." };
     if (!isMemberRole(targetRole)) return { ok: false, message: "Rol actual inválido." };
     // Admin no gestiona owners (ni los degrada ni crea nuevos).
     if (callerRole === "admin" && (targetRole === "owner" || input.role === "owner")) {
       return { ok: false, message: "Solo el propietario gestiona propietarios." };
     }
-    // Nunca quedarse sin owner.
-    if (targetRole === "owner" && input.role !== "owner") {
-      const { count } = await db
-        .from("sys_memberships")
-        .select("user_id", { count: "exact", head: true })
-        .eq("store_id", input.storeId)
-        .eq("role", "owner");
-      if ((count ?? 0) <= 1) {
-        return { ok: false, message: "No puedes quitar al único propietario." };
-      }
-    }
     if (targetRole === input.role) return { ok: true, message: "Sin cambios." };
-    const { error } = await db
-      .from("sys_memberships")
-      .update({ role: input.role })
-      .eq("store_id", input.storeId)
-      .eq("user_id", input.userId);
-    if (error) { log.warn("updateMemberRoleAction", { fail: `DB write: ${error.message}` }); return { ok: false, message: `DB write: ${error.message}` }; }
+    // "Nunca quedarse sin owner" lo garantiza la DB (evento member_of_keep_owner).
+    try {
+      await surql(
+        `UPDATE member_of SET role = $role
+         WHERE in = type::record('user', $user) AND out = type::record('sys_store', $store)`,
+        { role: input.role, user: input.userId, store: input.storeId },
+      );
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg.includes("sin propietario")) return { ok: false, message: "No puedes quitar al único propietario." };
+      log.warn("updateMemberRoleAction", { fail: `DB write: ${msg}` });
+      return { ok: false, message: `DB write: ${msg}` };
+    }
     revalidatePath("/settings");
     return { ok: true, message: "Rol actualizado." };
   } catch (e) {

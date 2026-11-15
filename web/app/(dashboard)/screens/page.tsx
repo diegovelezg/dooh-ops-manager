@@ -4,13 +4,13 @@ import { connection } from "next/server";
 import { AppCardState } from "@/components/app-card";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
-import { getSupabase } from "@/lib/supabase";
 import { loadPageData } from "@/lib/page-data";
 import { resolveSupplierDefault } from "@/lib/default-supplier";
 import { ScreensList } from "./screens-list";
 import { listScreenFilterOptions, listScreens, parseScreensSort } from "@/lib/screens-db";
+import { countScreens, countSlots, countVenues } from "@/lib/screens-store";
 
-// Ruta autenticada multi-tenant (lee Supabase por request a través del
+// Ruta autenticada multi-tenant (lee la DB por request a través del
 // layout): se permite el render bloqueante como el resto del dashboard.
 export const instant = false;
 
@@ -78,18 +78,14 @@ export default async function InventarioPage({
         listScreens(storeId, { q, supplierId: def.supplierId, ownOnly: def.ownOnly, city, active, sortKey, sortDir, page, pageSize: PAGE_SIZE }),
         listScreenFilterOptions(storeId),
       ]);
-      const db = getSupabase();
-      const tables = ["inv_venues", "inv_screens", "inv_slots"] as const;
-      const settled = await Promise.all(
-        tables.map((t) => db.from(t).select("id", { count: "exact", head: true }).eq("store_id", storeId)),
-      );
+      const [venues, screens, slots] = await Promise.all([countVenues(storeId), countScreens(storeId), countSlots(storeId)]);
       return {
         rows: list.rows,
         totalCount: list.total,
         truncated: list.truncated ?? false,
         suppliers: opts.suppliers,
         cities: opts.cities,
-        counts: Object.fromEntries(tables.map((t, i) => [t, settled[i]?.count ?? 0])),
+        counts: { inv_venues: venues, inv_screens: screens, inv_slots: slots } as Record<string, number>,
         supplierValue: def.supplierValue,
         defaultSupplierValue: def.defaultSupplierValue,
         casaName: def.casaName,

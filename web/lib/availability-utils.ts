@@ -1,11 +1,11 @@
 // Utilidades puras de disponibilidad (sin imports de servidor: se usan en cliente).
 // Rangos ocupados con días inclusivos "yyyy-mm-dd".
-// SSOT de fechas en lib/format.ts: los primitivos (todayLima, addDays,
+// SSOT de fechas en lib/format.ts: los primitivos ((todayIn, addDays,
 // día↔ordinal) viven ahí; aquí solo la lógica de huecos. Se re-exportan
 // para compatibilidad con los imports existentes.
 import { dayNumToISO, isoDayToNum } from "@/lib/format";
 
-export { addDays, todayLima } from "@/lib/format";
+export { addDays, todayIn } from "@/lib/format";
 
 export interface OccupiedRange {
   starts: string;

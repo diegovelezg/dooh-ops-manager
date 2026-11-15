@@ -1,10 +1,10 @@
-import { DAY_MS, isISODateShape, limaDayStart } from "@/lib/format";
+import { addDays, dayStartMs, isISODateShape } from "@/lib/format";
 
 // Etapa operativa de una orden: derivada de las hijas, no columna (evita desync).
 // Carril operativo: Firmada → Autorizada (hito) → Materiales → Programada → Al aire →
 // Por certificar → Cerrada. El cobro va en carril paralelo
 // (lib/billing-status.ts): admite upfront y abonos a mitad de pauta.
-// "Autorizada" es hito (se marca ✓ al registrar el OM); no es etapa filtrable.
+// "Autorizada" es hito (se marca ✓ al registrar el documento requerido); no es etapa filtrable.
 export const ORDER_STEPS = [
   "Firmada",
   "Autorizada",
@@ -52,20 +52,20 @@ export interface StageInput {
   paid?: boolean;
 }
 
-/** Fechas de cabecera inclusivas en Lima; líneas con fin exclusivo.
+/** Cabecera con días inclusivos del tenant (`tz`); líneas con instantes (fin exclusivo).
  * En huecos entre líneas no hay emisión prevista. */
 export function orderTiming(
   order: { starts_at?: unknown; ends_at?: unknown },
   lines: Array<{ starts_at?: unknown; ends_at?: unknown }>,
   now: number,
+  tz: string,
 ): { started: boolean; inFlight: boolean; ended: boolean } {
   const periods = lines.length > 0 ? lines : [order];
   const ranges = periods.map((p) => {
     const start = typeof p.starts_at === "string"
-      ? Date.parse(isISODateShape(p.starts_at) ? limaDayStart(p.starts_at) : p.starts_at) : NaN;
+      ? (isISODateShape(p.starts_at) ? dayStartMs(p.starts_at, tz) : Date.parse(p.starts_at)) : NaN;
     const end = typeof p.ends_at === "string"
-      ? Date.parse(isISODateShape(p.ends_at) ? limaDayStart(p.ends_at) : p.ends_at)
-        + (isISODateShape(p.ends_at) ? DAY_MS : 0) : NaN;
+      ? (isISODateShape(p.ends_at) ? dayStartMs(addDays(p.ends_at, 1), tz) : Date.parse(p.ends_at)) : NaN;
     return { start, end };
   });
   return {
@@ -79,6 +79,7 @@ export function orderTiming(
 export function orderStage(input: StageInput): { index: number; stage: OrderStageKey } {
   if (input.status === "cancelled") return { index: -1, stage: "cancelada" };
   if (!input.signed) return { index: 0, stage: "firmada" };
+  if (input.ended && input.certified) return { index: 6, stage: "cerrada" };
   if (input.started && (!input.hasOm || !input.materialsOk)) {
     return { index: input.hasOm ? 2 : 1, stage: "atrasada" };
   }

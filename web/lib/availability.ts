@@ -1,16 +1,18 @@
 // Disponibilidad de pantallas por periodo (anti-sobreventa en la venta).
 // La unidad ocupable es el slot/día: cada línea reserva `cant_slots` y cada
-// booking 1 slot. La capacidad es slots propios activos (inv_slots) o el
-// default del tenant (`sys_stores.default_slots_per_screen`). Una pantalla
+// booking 1 slot. La capacidad la define la DB (`fn::screen_capacity`): slots propios
+// activos o el default del tenant (`sys_store.default_slots_per_screen`). Una pantalla
 // bloquea solo los días donde reservados + solicitados > capacidad; el resto
 // visible (slots libres por día) viaja en `remaining`/`capacities`.
 // Fuentes: líneas de órdenes vigentes + bookings vigentes.
-// Un borrador aparta (hold) solo si está fresco (HOLD_DAYS); vencido, libera.
-import { getSupabase } from "@/lib/supabase";
-import { normalizeSlotsPerScreen, DEFAULT_SLOTS_PER_SCREEN } from "@/lib/store-slots";
+// Solo apartan las reservas explícitas vigentes y las órdenes confirmadas.
+import { consumesCapacity } from "@/lib/order-workflow";
+import { surql } from "@/lib/surreal";
+import { DEFAULT_SLOTS_PER_SCREEN } from "@/lib/store-slots";
 import { normalizeLineSlots } from "@/lib/order-lines";
 import type { OccupiedRange } from "@/lib/availability-utils";
-import { addDays, DAY_MS, displayEndOf, isoDayPart, isValidISODate, limaDayStart, dayNumToISO, isoDayToNum } from "@/lib/format";
+import { addDays, DAY_MS, dayOf, dayStart, displayEndOf, isValidISODate, dayNumToISO, isoDayToNum } from "@/lib/format";
+import { getStoreTimeZone } from "@/lib/stores-db";
 
 export { displayEndOf };
 
@@ -39,7 +41,7 @@ export function rangesOverlap(aStart: string, aEnd: string, bStart: string, bEnd
   return aStart < bEnd && bStart < aEnd;
 }
 
-/** ¿El hold (borrador) sigue vigente? created_at + HOLD_DAYS > ahora. */
+/** Compatibilidad de históricos y pruebas antiguas; las lecturas usan consumesCapacity. */
 export function isHoldFresh(createdAt: string | null | undefined, now = Date.now()): boolean {
   if (!createdAt) return false;
   const t = Date.parse(createdAt);
@@ -66,14 +68,14 @@ function assertDateStr(v: string, field: string): string {
   return v;
 }
 
-/** Periodo UI (inicio/fin inclusivos "yyyy-mm-dd") → rango semiabierto ISO Lima. */
-export function periodBounds(starts: string, ends: string): { qStart: string; qEnd: string } {
+/** Periodo UI (inicio/fin inclusivos "yyyy-mm-dd" del tenant) → rango semiabierto en instantes UTC. */
+export function periodBounds(starts: string, ends: string, tz: string): { qStart: string; qEnd: string } {
   assertDateStr(starts, "starts");
   assertDateStr(ends, "ends");
   if (ends < starts) throw new Error(`Rango inválido: ${starts} > ${ends}`);
   return {
-    qStart: limaDayStart(starts),
-    qEnd: limaDayStart(addDays(ends, 1)),
+    qStart: dayStart(starts, tz),
+    qEnd: dayStart(addDays(ends, 1), tz),
   };
 }
 
@@ -92,44 +94,21 @@ export async function getScreenConflicts(
   return (await getPeriodAvailability(storeId, null, starts, ends, opts)).conflicts;
 }
 
-/** Capacidad slots/día por pantalla: slots propios activos o default del tenant. */
+/** Capacidad slots/día por pantalla (regla única en la DB: `fn::screen_capacity`). */
 export async function getScreenCapacities(
   storeId: string,
   screenIds: string[],
 ): Promise<Map<string, number>> {
-  const db = getSupabase();
   const out = new Map<string, number>();
   if (screenIds.length === 0) return out;
-  let fallback = DEFAULT_SLOTS_PER_SCREEN;
-  try {
-    const { data: srow } = await db
-      .from("sys_stores")
-      .select("default_slots_per_screen")
-      .eq("id", storeId)
-      .maybeSingle();
-    fallback = normalizeSlotsPerScreen((srow as Record<string, unknown> | null)?.default_slots_per_screen);
-  } catch {
-    // default del código
-  }
-  const activeBy = new Map<string, number>();
-  const hasAny = new Set<string>();
-  // Lotes de 100: un .in() con miles de UUIDs revienta la URL (Kong 414).
-  for (let i = 0; i < screenIds.length; i += 100) {
-    const chunk = screenIds.slice(i, i + 100);
-    const { data: slots, error } = await db
-      .from("inv_slots")
-      .select("screen_id,is_active")
-      .eq("store_id", storeId)
-      .in("screen_id", chunk);
-    if (error) throw new Error(`Availability slots: ${error.message}`);
-    for (const s of ((slots ?? []) as Array<Record<string, unknown>>)) {
-      const id = String(s.screen_id ?? "");
-      if (!id) continue;
-      hasAny.add(id);
-      if (s.is_active !== false) activeBy.set(id, (activeBy.get(id) ?? 0) + 1);
-    }
-  }
-  for (const id of screenIds) out.set(id, hasAny.has(id) ? (activeBy.get(id) ?? 0) : fallback);
+  const rows = await surql<Array<{ id: string; capacity: number }>>(
+    `SELECT record::id(id) AS id, fn::screen_capacity(id) AS capacity FROM inv_screen
+     WHERE store = type::record('sys_store', $store) AND id IN $ids.map(|$i| type::record('inv_screen', $i))`,
+    { store: storeId, ids: screenIds },
+  );
+  for (const r of rows) out.set(r.id, r.capacity);
+  // Ids ajenos o inexistentes: sin pantalla no hay capacidad que vender.
+  for (const id of screenIds) if (!out.has(id)) out.set(id, 0);
   return out;
 }
 
@@ -151,10 +130,10 @@ async function loadAvailabilityGrid(
   toNumExcl: number,
   opts: { excludeIoId?: string | null } = {},
 ): Promise<AvailabilityGrid> {
-  const db = getSupabase();
   const excluded = typeof opts.excludeIoId === "string" && opts.excludeIoId ? opts.excludeIoId : null;
-  const winStart = limaDayStart(dayNumToISO(fromNum));
-  const winEnd = limaDayStart(dayNumToISO(toNumExcl));
+  const tz = await getStoreTimeZone(storeId);
+  const winStart = dayStart(dayNumToISO(fromNum), tz);
+  const winEnd = dayStart(dayNumToISO(toNumExcl), tz);
   const reserved = new Map<string, Map<number, number>>();
   const info = new Map<string, { io_number: string | null; brand: string | null; source: "order" | "booking" }>();
   const holds = new Map<string, Set<number>>();
@@ -168,117 +147,65 @@ async function loadAvailabilityGrid(
     if (!info.has(id)) info.set(id, { io_number, brand, source });
   };
 
-  // Lotes de 100 pantallas: un .in() con miles de UUIDs revienta la URL.
-  // Todas las lecturas paginan (.range) sin `limit` mudo: truncar en silencio
-  // sería sobreestimar disponibilidad (sobreventa). Tope alto y ruidoso.
-  const PAGE = 1000;
-  const MAX_PAGES = 100;
-  async function fetchPaged(
-    label: string,
-    build: (rangeFrom: number, rangeTo: number) => PromiseLike<{ data: unknown; error: { message?: string } | null }>,
-  ): Promise<Array<Record<string, unknown>>> {
-    const out: Array<Record<string, unknown>> = [];
-    for (let p = 0; p < MAX_PAGES; p++) {
-      const { data, error } = await build(p * PAGE, p * PAGE + PAGE - 1);
-      if (error) throw new Error(`Availability ${label}: ${error.message ?? "DB read failed"}`);
-      const rows = (data ?? []) as Array<Record<string, unknown>>;
-      out.push(...rows);
-      if (rows.length < PAGE) return out;
+  // Sin paginación ni `limit` mudo: SurrealDB devuelve la ventana completa (truncar en silencio
+  // sería sobreestimar disponibilidad = sobreventa). `screenIds` null = descubre por actividad.
+  const scope = screenIds ? "AND screen IN $ids.map(|$i| type::record('inv_screen', $i))" : "";
+  const bookScope = screenIds ? "AND slot.screen IN $ids.map(|$i| type::record('inv_screen', $i))" : "";
+  const vars = { store: storeId, ids: screenIds ?? undefined, from: winStart, to: winEnd };
+  const [lines, books] = await Promise.all([
+    surql<Array<Record<string, unknown>>>(
+      `SELECT record::id(order) AS io_id, record::id(screen) AS screen_id, fn::iso(starts_at) AS starts_at,
+              fn::iso(ends_at) AS ends_at, cant_slots, order.number AS io_number, order.brand AS brand,
+              order.status AS status, fn::iso(order.created_at) AS created_at, fn::iso(order.reservation_expires_at) AS reservation_expires_at
+       FROM io_line WHERE store = type::record('sys_store', $store) ${scope}
+         AND starts_at < <datetime> $to AND ends_at > <datetime> $from`,
+      vars,
+    ),
+    surql<Array<Record<string, unknown>>>(
+      `SELECT record::id(slot.screen) AS screen_id, fn::key(order) AS io_id, order.number AS io_number, order.brand AS brand,
+              fn::iso(starts_at) AS starts_at, fn::iso(ends_at) AS ends_at, status
+       FROM inv_booking WHERE store = type::record('sys_store', $store) ${bookScope} AND status != 'cancelled'
+         AND starts_at < <datetime> $to AND ends_at > <datetime> $from`,
+      vars,
+    ),
+  ]);
+  for (const l of lines) {
+    if (excluded && String(l.io_id ?? "") === excluded) continue;
+    if (l.status === "cancelled") continue;
+    if (!consumesCapacity(l)) continue;
+    const id = String(l.screen_id ?? "");
+    if (!id) continue;
+    const qtyRaw = Number(l.cant_slots ?? 1);
+    const qty = Number.isFinite(qtyRaw) && qtyRaw >= 1 ? Math.floor(qtyRaw) : 1;
+    const s = Math.max(isoDayToNum(dayOf(String(l.starts_at), tz)), fromNum);
+    const e = Math.min(isoDayToNum(dayOf(String(l.ends_at), tz)), toNumExcl);
+    const isHold = l.status === "draft";
+    for (let d = s; d < e; d++) {
+      add(id, d, qty);
+      if (isHold) {
+        let h = holds.get(id);
+        if (!h) holds.set(id, (h = new Set()));
+        h.add(d);
+      }
     }
-    throw new Error(`Availability ${label}: ventana demasiado grande (tope ${MAX_PAGES * PAGE} filas).`);
+    note(id, typeof l.io_number === "string" ? l.io_number : null, typeof l.brand === "string" ? l.brand : null, "order");
   }
-  const chunks: Array<string[] | null> = screenIds
-    ? Array.from({ length: Math.ceil(screenIds.length / 100) }, (_, i) => screenIds.slice(i * 100, i * 100 + 100))
-    : [null];
-
-  for (const chunk of chunks) {
-    const lines = await fetchPaged("lines", (a, b) => {
-      let linesQuery = db
-        .from("io_lines")
-        .select("io_id,screen_id,starts_at,ends_at,cant_slots,io_orders!insertion_order_lines_io_id_fkey!inner(io_number,brand,status,created_at)")
-        .eq("store_id", storeId)
-        .eq("io_orders.store_id", storeId)
-        .lt("starts_at", winEnd)
-        .gt("ends_at", winStart)
-        .order("id")
-        .range(a, b);
-      if (chunk) linesQuery = linesQuery.in("screen_id", chunk);
-      return linesQuery;
-    });
-    for (const l of lines) {
-      if (excluded && String(l.io_id ?? "") === excluded) continue;
-      const o = l.io_orders as unknown as Record<string, unknown> | null;
-      if (!o || o.status === "cancelled") continue;
-      if (o.status === "draft" && !isHoldFresh(typeof o.created_at === "string" ? o.created_at : null)) continue;
-      const id = String(l.screen_id ?? "");
-      if (!id) continue;
-      const qtyRaw = Number(l.cant_slots ?? 1);
-      const qty = Number.isFinite(qtyRaw) && qtyRaw >= 1 ? Math.floor(qtyRaw) : 1;
-      const s = Math.max(isoDayToNum(isoDayPart(String(l.starts_at)) ?? ""), fromNum);
-      const e = Math.min(isoDayToNum(isoDayPart(String(l.ends_at)) ?? ""), toNumExcl);
-      const isHold = o.status === "draft";
-      for (let d = s; d < e; d++) {
-        add(id, d, qty);
-        if (isHold) {
-          let h = holds.get(id);
-          if (!h) holds.set(id, (h = new Set()));
-          h.add(d);
-        }
-      }
-      note(
-        id,
-        typeof o.io_number === "string" ? o.io_number : null,
-        typeof o.brand === "string" ? o.brand : null,
-        "order",
-      );
-    }
-
-    const slots = await fetchPaged("slots", (a, b) => {
-      let slotQuery = db.from("inv_slots").select("id,screen_id").eq("store_id", storeId).order("id").range(a, b);
-      if (chunk) slotQuery = slotQuery.in("screen_id", chunk);
-      return slotQuery;
-    });
-    const slotById = new Map(
-      (slots.map((s) => [String(s.id), String(s.screen_id)])),
-    );
-    const slotIds = [...slotById.keys()];
-    for (let i = 0; i < slotIds.length; i += 100) {
-      const books = await fetchPaged("bookings", (a, b) => {
-        return db
-          .from("inv_bookings")
-          .select("slot_id,insertion_order_id,starts_at,ends_at,status,io_orders!bookings_insertion_order_id_fkey(io_number,brand)")
-          .eq("store_id", storeId)
-          .in("slot_id", slotIds.slice(i, i + 100))
-          .neq("status", "cancelled")
-          .lt("starts_at", winEnd)
-          .gt("ends_at", winStart)
-          .order("id")
-          .range(a, b);
-      });
-      for (const b of books) {
-        if (excluded && b.insertion_order_id != null && String(b.insertion_order_id) === excluded) continue;
-        const screenId = slotById.get(String(b.slot_id));
-        if (!screenId) continue;
-        const s = Math.max(isoDayToNum(isoDayPart(String(b.starts_at)) ?? ""), fromNum);
-        const e = Math.min(isoDayToNum(isoDayPart(String(b.ends_at)) ?? ""), toNumExcl);
-        const isHold = String(b.status ?? "") === "hold";
-        for (let d = s; d < e; d++) {
-          add(screenId, d, 1);
-          if (isHold) {
-            let h = holds.get(screenId);
-            if (!h) holds.set(screenId, (h = new Set()));
-            h.add(d);
-          }
-        }
-        const o = b.io_orders as unknown as Record<string, unknown> | null;
-        note(
-          screenId,
-          o && typeof o.io_number === "string" ? o.io_number : null,
-          o && typeof o.brand === "string" ? o.brand : null,
-          "booking",
-        );
+  for (const b of books) {
+    if (excluded && b.io_id != null && String(b.io_id) === excluded) continue;
+    const screenId = String(b.screen_id ?? "");
+    if (!screenId) continue;
+    const s = Math.max(isoDayToNum(dayOf(String(b.starts_at), tz)), fromNum);
+    const e = Math.min(isoDayToNum(dayOf(String(b.ends_at), tz)), toNumExcl);
+    const isHold = String(b.status ?? "") === "hold";
+    for (let d = s; d < e; d++) {
+      add(screenId, d, 1);
+      if (isHold) {
+        let h = holds.get(screenId);
+        if (!h) holds.set(screenId, (h = new Set()));
+        h.add(d);
       }
     }
+    note(screenId, typeof b.io_number === "string" ? b.io_number : null, typeof b.brand === "string" ? b.brand : null, "booking");
   }
 
   const ids = screenIds ?? [...new Set([...reserved.keys()])];

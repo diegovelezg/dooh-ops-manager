@@ -10,7 +10,7 @@ import { isCrmStatusFilter, parseCompanyKinds, isDefaultCompanyKinds, type CrmSt
 import { connection } from "next/server";
 import { CompaniesList } from "./companies-list";
 
-// Request-time: usa el cliente Supabase (timers/Date internos) en el render.
+// Request-time: lee sesión (cookies) y DB por request.
 // Cache Components no lo difiere con `instant = false`; ver nota en
 // app/(dashboard)/page.tsx.
 export const instant = false;

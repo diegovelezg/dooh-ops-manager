@@ -94,12 +94,12 @@ describe("toTitleCase", () => {
 describe("formatTimeAgo", () => {
   it("relativo corto en español para feeds", () => {
     const now = Date.parse("2026-11-08T12:00:00Z");
-    assert.equal(formatTimeAgo(new Date(now - 30_000).toISOString(), now), "ahora mismo");
-    assert.equal(formatTimeAgo(new Date(now - 5 * 60_000).toISOString(), now), "hace 5 min");
-    assert.equal(formatTimeAgo(new Date(now - 3 * 3_600_000).toISOString(), now), "hace 3 h");
-    assert.equal(formatTimeAgo(new Date(now - 2 * 86_400_000).toISOString(), now), "hace 2 d");
-    assert.equal(formatTimeAgo(null, now), "—");
-    assert.equal(formatTimeAgo("no-fecha", now), "—");
+    assert.equal(formatTimeAgo(new Date(now - 30_000).toISOString(), "America/Lima", now), "ahora mismo");
+    assert.equal(formatTimeAgo(new Date(now - 5 * 60_000).toISOString(), "America/Lima", now), "hace 5 min");
+    assert.equal(formatTimeAgo(new Date(now - 3 * 3_600_000).toISOString(), "America/Lima", now), "hace 3 h");
+    assert.equal(formatTimeAgo(new Date(now - 2 * 86_400_000).toISOString(), "America/Lima", now), "hace 2 d");
+    assert.equal(formatTimeAgo(null, "America/Lima", now), "—");
+    assert.equal(formatTimeAgo("no-fecha", "America/Lima", now), "—");
   });
 
   it("formatDayMonth para vigencias", () => {

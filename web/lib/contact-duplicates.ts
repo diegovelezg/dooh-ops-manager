@@ -4,7 +4,7 @@
 // Salesforce/Dynamics matchean activos e inactivos): el archivado también se
 // detecta —es lo que se quiere fusionar— y la UI lo marca con badge.
 // Puro y testeable; la escritura vive en crm-actions.ts (mergeContactsAction).
-import { getSupabase } from "@/lib/supabase";
+import { listCompanies, listContactsForDuplicates } from "@/lib/crm-store";
 
 export interface DuplicateContactRow {
   id: string;
@@ -108,50 +108,31 @@ export function findContactDuplicateGroups(rows: DuplicateContactRow[]): Duplica
   return out;
 }
 
-const PAGE = 500;
 const CAP = 2000;
 
 /** Grupos de duplicados del tenant (paginado; `truncated` si supera el tope). */
 export async function listContactDuplicateGroups(
   storeId: string,
 ): Promise<{ groups: DuplicateGroup[]; total: number; truncated: boolean }> {
-  const db = getSupabase();
-  const rows: DuplicateContactRow[] = [];
-  let truncated = false;
-  // Sin join: mapa de empresas aparte (mismo patrón que listCrmContacts).
-  for (let off = 0; ; off += PAGE) {
-    const { data, error } = await db
-      .from("crm_contacts")
-      .select("id,company_id,first_name,last_name,email,phone,job_title,is_primary,deleted_at")
-      .eq("store_id", storeId)
-      .order("id", { ascending: true })
-      .range(off, off + PAGE - 1);
-    if (error) throw new Error(`CRM read: ${error.message}`);
-    const page = (data ?? []) as Array<Record<string, unknown>>;
-    for (const c of page) {
-      rows.push({
-        id: String(c.id),
-        company_id: (c.company_id as string | null) ?? null,
-        company_name: null,
-        first_name: (c.first_name as string | null) ?? null,
-        last_name: (c.last_name as string | null) ?? null,
-        email: (c.email as string | null) ?? null,
-        phone: (c.phone as string | null) ?? null,
-        job_title: (c.job_title as string | null) ?? null,
-        is_primary: c.is_primary === true,
-        archived: (c.deleted_at as string | null) !== null,
-      });
-    }
-    if (page.length < PAGE) break;
-    if (rows.length >= CAP) {
-      truncated = true;
-      break;
-    }
-  }
+  // Una lectura con tope (+1 fila para detectar el corte); el nombre de empresa
+  // viaja en un mapa aparte (mismo patrón que listCrmContacts).
+  const page = await listContactsForDuplicates(storeId, CAP + 1);
+  const truncated = page.length > CAP;
+  const rows: DuplicateContactRow[] = page.slice(0, CAP).map((c) => ({
+    id: String(c.id),
+    company_id: (c.company_id as string | null) ?? null,
+    company_name: null,
+    first_name: (c.first_name as string | null) ?? null,
+    last_name: (c.last_name as string | null) ?? null,
+    email: (c.email as string | null) ?? null,
+    phone: (c.phone as string | null) ?? null,
+    job_title: (c.job_title as string | null) ?? null,
+    is_primary: c.is_primary === true,
+    archived: (c.deleted_at as string | null | undefined) != null,
+  }));
   const companyIds = [...new Set(rows.map((r) => r.company_id).filter((v): v is string => !!v))];
   if (companyIds.length > 0) {
-    const { data: cos } = await db.from("crm_companies").select("id,name").eq("store_id", storeId).in("id", companyIds);
-    const names = new Map(((cos ?? []) as Array<Record<string, unknown>>).map((c) => [String(c.id), String(c.name ?? "")]));
+    const names = new Map((await listCompanies(storeId, companyIds)).map((c) => [String(c.id), String(c.name ?? "")]));
     for (const r of rows) if (r.company_id) r.company_name = names.get(r.company_id) ?? null;
   }
   return { groups: findContactDuplicateGroups(rows), total: rows.length, truncated };

@@ -6,9 +6,11 @@
 
 export { FIELD_ERR_CLS } from "@/components/ui/form-feedback";
 
-export type ScreenFieldKey = "name" | "venue" | "price" | "size" | "playback" | "impact";
+export type ScreenFieldKey = "name" | "venue" | "price" | "size" | "playback" | "impact" | "supplier";
 
 export interface ScreenFieldValues {
+  ownership?: "own" | "supplier";
+  supplierId?: string;
   name: string;
   venueId: string;
   venueAddress: string;
@@ -41,6 +43,8 @@ function optPositiveIntOk(raw: string): boolean {
 /** Devuelve la lista de campos inválidos con su mensaje (vacío = válido). */
 export function validateScreenFields(v: ScreenFieldValues): Array<{ key: ScreenFieldKey; message: string }> {
   const out: Array<{ key: ScreenFieldKey; message: string }> = [];
+  if (v.ownership === "supplier" && (!v.supplierId || v.supplierId === "__none")) out.push({ key: "supplier", message: "Selecciona un proveedor para inventario externo." });
+  if (v.ownership === "own" && v.supplierId && v.supplierId !== "__none") out.push({ key: "supplier", message: "Una pantalla propia no lleva proveedor." });
   if (!v.name.trim()) out.push({ key: "name", message: "Nombre de pantalla requerido." });
   else if (v.name.trim().length > 200) out.push({ key: "name", message: "Nombre muy largo (máx 200)." });
   if (!v.venueAddress.trim()) {
@@ -72,6 +76,7 @@ export function validateScreenFields(v: ScreenFieldValues): Array<{ key: ScreenF
 
 /** Mapea un mensaje del server action al campo a resaltar. */
 export function fieldsFromMessage(msg: string): ScreenFieldKey[] {
+  if (/proveedor|propiedad/i.test(msg)) return ["supplier"];
   if (/recinto|venue|dirección|direccion/i.test(msg)) return ["venue"];
   if (/precio/i.test(msg)) return ["price"];
   if (/medida|ancho|alto|tamaño|px|resolución|resolucion/i.test(msg)) return ["size"];

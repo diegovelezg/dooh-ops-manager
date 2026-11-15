@@ -51,7 +51,7 @@ describe("dooh_agent cableado (no 501)", () => {
     process.env.DEEPSEEK_API_KEY ??= "test-key";
   });
   it("expone 6 tools incluyendo get_screen", () => {
-    const tools = createDoohTools({ storeId: "s1" });
+    const tools = createDoohTools({ timezone: "America/Lima", storeId: "s1" });
     const names = tools.map((t) => t.name).sort();
     assert.deepEqual(names, [
       "explain_kpi",
@@ -63,13 +63,13 @@ describe("dooh_agent cableado (no 501)", () => {
     ]);
   });
   it("el agente trae modelo (no solo instrucción + tools)", () => {
-    const agent = getCustomerAgent({ storeId: "s1", screenId: "screen-1", focusLabel: "Pantalla X" });
+    const agent = getCustomerAgent({ timezone: "America/Lima", storeId: "s1", screenId: "screen-1", focusLabel: "Pantalla X" });
     const cfg = agent as unknown as Record<string, unknown>;
     assert.ok(cfg.model, "LlmAgent sin model: el chat no puede responder");
     assert.equal(cfg.name, "dooh_agent");
   });
   it("la instrucción inyecta foco y fecha Lima", () => {
-    const block = buildScopeBlock({ storeId: "s1", screenId: "screen-1", focusLabel: "28 de Julio" });
+    const block = buildScopeBlock({ timezone: "America/Lima", storeId: "s1", screenId: "screen-1", focusLabel: "28 de Julio" });
     assert.match(block, /pantalla enfocada: screen-1/);
     assert.match(block, /hoy=\d{4}-\d{2}-\d{2}/);
     assert.match(block, /periodo por defecto=/);

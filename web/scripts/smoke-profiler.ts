@@ -2,11 +2,12 @@
 // Uso: npx tsx --env-file=.env.local scripts/smoke-profiler.ts "somos tupantalla.com"
 // Valida: investigator → sector(cache) + analyst → synthesizer → critic.
 import { runProfiler } from "@/lib/profiling/pipeline";
-import { loadServiceStore } from "./lib/run-once";
+import { loadStoreId } from "./lib/run-once";
+import { closeDb } from "@/lib/surreal";
 
 async function main() {
   const description = process.argv[2] ?? "somos tupantalla.com";
-  const { storeId } = await loadServiceStore();
+  const storeId = await loadStoreId();
   const t0 = Date.now();
   const { synthesis: s, critic, sectorFromCache } = await runProfiler(storeId, description);
   console.log(`sector: ${sectorFromCache ? "CACHE" : "investigado"}`);
@@ -26,7 +27,7 @@ async function main() {
   console.log(`\nTOTAL ${Date.now() - t0}ms — fin`);
 }
 
-main().catch((e) => {
+main().then(() => closeDb()).catch((e) => {
   console.error("SMOKE FAIL:", e instanceof Error ? e.message : e);
   process.exit(1);
 });

@@ -1,7 +1,6 @@
-// Gate de esquema en runtime (Fase 2 DOOH): la fuente de verdad sigue en
-// supabase/migrations/*.sql. Sonda por PostgREST las tablas del flujo
-// comercial real: órdenes (IOs), inventario y CRM.
-import type { SupabaseClient } from "@supabase/supabase-js";
+// Gate de esquema en runtime: sondea que las tablas del flujo comercial existan (`INFO FOR DB`).
+// El esquema lo crean surreal/migrations/*.surql con `npm run db:migrate`.
+import { surql } from "@/lib/surreal";
 
 export interface SchemaGap {
   relation: string;
@@ -9,33 +8,27 @@ export interface SchemaGap {
 }
 
 const REQUIRED_TABLES = [
-  "sys_stores",
-  "crm_companies",
-  "crm_contacts",
-  "crm_company_links",
-  "crm_contact_accounts",
-  "inv_venues",
-  "inv_screens",
-  "inv_slots",
-  "io_orders",
-  "io_lines",
-  "inv_bookings",
+  "user",
+  "sys_store",
+  "member_of",
+  "crm_company",
+  "crm_contact",
+  "crm_company_link",
+  "crm_contact_account",
+  "inv_venue",
+  "inv_screen",
+  "inv_slot",
+  "inv_booking",
+  "io_order",
+  "io_line",
+  "io_invoice",
+  "io_invoice_payment",
 ] as const;
 
-export async function checkSchema(db: SupabaseClient): Promise<SchemaGap[]> {
-  const gaps: SchemaGap[] = [];
-  for (const t of REQUIRED_TABLES) {
-    const { error } = await db.from(t).select("*", { count: "exact", head: true });
-    if (error) gaps.push({ relation: `public.${t}`, hint: error.message });
-  }
-  return gaps;
-}
-
-function schemaGapMessage(gaps: SchemaGap[]): string {
-  const names = gaps.map((g) => g.relation).join(", ");
-  return (
-    `DB detrás del código: falta ${names}. ` +
-    `Aplicar supabase/migrations en la base de datos ` +
-    `(y reiniciar PostgREST para recargar el schema-cache).`
-  );
+export async function checkSchema(): Promise<SchemaGap[]> {
+  const info = await surql<{ tables: Record<string, unknown> }>("INFO FOR DB");
+  return REQUIRED_TABLES.filter((t) => !(t in info.tables)).map((t) => ({
+    relation: `surreal.${t}`,
+    hint: "Falta la tabla: ejecuta `npm run db:migrate`.",
+  }));
 }

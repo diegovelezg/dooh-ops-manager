@@ -15,11 +15,11 @@ import type { OrderStageKey } from "@/lib/order-stage";
  * La gramática vive en `lib/ui-badges.tsx`; aquí solo se compone.
  */
 
-export function OrderStageBadge({ stage, isDraft }: { stage: OrderStageKey; isDraft: boolean }) {
+export function OrderStageBadge({ stage, isDraft, commercialState }: { stage: OrderStageKey; isDraft: boolean; commercialState?: string }) {
   const d = orderStageDisplay(stage, isDraft);
   return (
     <Badge variant={d.variant} className="font-normal" title={d.title}>
-      {d.label}
+      {isDraft ? (commercialState ?? "Cotizada") : d.label}
     </Badge>
   );
 }

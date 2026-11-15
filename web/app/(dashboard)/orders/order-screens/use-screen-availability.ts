@@ -3,11 +3,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { checkAvailabilityAction, getScreenOccupancyAction } from "@/lib/order-actions";
 import type { ScreenConflict } from "@/lib/availability";
-import { nextFreeWindow, todayLima, unionRanges, type OccupiedRange } from "@/lib/availability-utils";
+import { nextFreeWindow, todayIn, unionRanges, type OccupiedRange } from "@/lib/availability-utils";
 import { addDays, diffDaysInclusive, formatDate } from "@/lib/format";
 import { parseSlotsInput } from "@/lib/order-lines";
 import type { ScreenPick } from "./types";
 import { plural } from "./types";
+import { useTz } from "@/components/tenant-time";
 
 /** Disponibilidad compartida (nueva orden + editar pantallas).
  *  Debounce 400ms: choques del periodo + ocupación de todas las pantallas.
@@ -27,6 +28,7 @@ export function useScreenAvailability({
   slots?: Record<string, string>;
   excludeIoId?: string | null;
 }) {
+  const tz = useTz();
   const dias = diffDaysInclusive(starts, ends);
 
   const [conflicts, setConflicts] = useState<ScreenConflict[]>([]);
@@ -40,6 +42,7 @@ export function useScreenAvailability({
   const slotsKey = screens.map((s) => `${s.id}:${qtyOf(s.id)}`).join(",");
 
   useEffect(() => {
+    let alive = true;
     const h = setTimeout(async () => {
       if (dias === null) {
         setConflicts([]);
@@ -49,13 +52,14 @@ export function useScreenAvailability({
       }
       setChecking(true);
       try {
-        const anchor = todayLima();
+        const anchor = todayIn(tz);
         const ids = screens.map((s) => s.id);
         const qtyBy: Record<string, number> = Object.fromEntries(ids.map((id) => [id, qtyOf(id)]));
         const [res, occ] = await Promise.all([
           checkAvailabilityAction({ starts, ends, screenIds: ids, slots: qtyBy, excludeIoId }),
           getScreenOccupancyAction({ screenIds: ids, from: anchor, slots: qtyBy, excludeIoId }),
         ]);
+        if (!alive) return;
         if (res.ok) {
           setConflicts(res.conflicts);
           setRemaining(res.remaining);
@@ -71,16 +75,21 @@ export function useScreenAvailability({
             return next;
           });
           setCapacities((prev) => ({ ...prev, ...occ.capacities }));
+        } else {
+          setAvailError(occ.message || "No se pudo cargar la ocupación.");
         }
       } catch {
-        setAvailError("No se pudo verificar disponibilidad.");
+        if (alive) setAvailError("No se pudo verificar disponibilidad.");
       } finally {
-        setChecking(false);
+        if (alive) setChecking(false);
       }
     }, 400);
-    return () => clearTimeout(h);
+    return () => {
+      alive = false;
+      clearTimeout(h);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [starts, ends, dias, screens, slotsKey, excludeIoId]);
+  }, [starts, ends, dias, screens, slotsKey, excludeIoId, tz]);
 
   const conflictBy = useMemo(() => {
     const m = new Map<string, ScreenConflict[]>();
@@ -96,7 +105,7 @@ export function useScreenAvailability({
   const untilOf = (id: string): string | null => {
     const list = conflictBy.get(id);
     if (!list || list.length === 0) return null;
-    return list.reduce((a, b) => (a > b ? a : b)).ends;
+    return list.reduce((a, b) => (a.ends > b.ends ? a : b)).ends;
   };
   /** Slots libres mínimos en el periodo pedido (null = sin periodo). */
   const remainingOf = (id: string): number | null => {
@@ -110,7 +119,7 @@ export function useScreenAvailability({
   const capacityOf = (id: string): number | null => capacities[id] ?? null;
 
   const occupiedCount = dias !== null ? screens.filter((s) => conflictBy.has(s.id)).length : 0;
-  const periodLabel = dias !== null ? `${formatDate(starts)}→${formatDate(ends)}` : null;
+  const periodLabel = dias !== null ? `${formatDate(starts, tz)}→${formatDate(ends, tz)}` : null;
 
   /** Próximo hueco común a las elegidas (misma duración). */
   function commonWindowFor(selectedIds: string[]): string | null {
@@ -125,14 +134,14 @@ export function useScreenAvailability({
   function nextWindowLabelFor(selectedIds: string[]): string | null {
     const w = commonWindowFor(selectedIds);
     if (!w || dias === null) return null;
-    return `Mover al próximo hueco: ${formatDate(w)} → ${formatDate(addDays(w, dias - 1))}`;
+    return `Mover al próximo hueco: ${formatDate(w, tz)} → ${formatDate(addDays(w, dias - 1), tz)}`;
   }
 
   /** Carga perezosa de la ocupación de una pantalla (calendario). */
   function ensureOccupancy(id: string, qty?: number) {
     if (id in occupancy) return;
     const slots = qty !== undefined ? { [id]: qty } : undefined;
-    void getScreenOccupancyAction({ screenIds: [id], from: todayLima(), slots, excludeIoId }).then((res) => {
+    void getScreenOccupancyAction({ screenIds: [id], from: todayIn(tz), slots, excludeIoId }).then((res) => {
       if (res.ok) {
         setOccupancy((prev) => {
           const next: Record<string, OccupiedRange[]> = { ...prev, ...res.occupancy };

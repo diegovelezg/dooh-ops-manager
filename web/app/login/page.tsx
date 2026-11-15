@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
-import { createServerSupabase, isUserAuthConfigured } from "@/lib/supabase-server";
+import { getSessionUser } from "@/lib/auth";
+import { isDbConfigured } from "@/lib/surreal";
 import { LoginForm } from "./login-form";
 
 export const instant = false;
@@ -12,14 +13,12 @@ export default async function LoginPage({
 }) {
   // Login lee sesión (cookies) y redirige: todo a request-time.
   // Sin esto, Next intenta prerenderizar y falla con
-  // `blocking-prerender-current-time` (el cliente Supabase usa timers/Date).
+  // `blocking-prerender-current-time`.
   await connection();
   const sp = await searchParams;
   const next = sp.next ?? "";
-  if (isUserAuthConfigured()) {
-    const supabase = await createServerSupabase();
-    const { data } = await supabase.auth.getUser();
-    if (data.user) redirect(next.startsWith("/") && !next.startsWith("//") ? next : "/");
+  if (isDbConfigured()) {
+    if (await getSessionUser()) redirect(next.startsWith("/") && !next.startsWith("//") ? next : "/");
   }
   return (
     <div className="relative flex min-h-dvh w-full items-center justify-center overflow-hidden bg-gradient-to-br from-primary/[0.06] via-background to-background p-6">

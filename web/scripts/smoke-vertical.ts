@@ -1,6 +1,7 @@
 // Smoke Fase A: researchVertical real (investiga → guarda → re-lee del cache).
 // Uso: npx tsx --env-file=.env.local scripts/smoke-vertical.ts "publicidad en pantallas digitales de vía pública" [taxonomyId]
 import { researchVertical, saveVerticalProfile, getVerticalProfile } from "@/lib/verticals";
+import { closeDb } from "@/lib/surreal";
 
 async function main() {
   const vertical = process.argv[2] ?? "publicidad en pantallas digitales de vía pública";
@@ -29,7 +30,7 @@ async function main() {
   console.log(`\nTOTAL ${Date.now() - t0}ms — fin`);
 }
 
-main().catch((e) => {
+main().then(() => closeDb()).catch((e) => {
   console.error("SMOKE FAIL:", e instanceof Error ? e.message : e);
   process.exit(1);
 });

@@ -85,7 +85,12 @@ export default async function DashboardPage() {
               <Metric
                 label="Ocupación 14d"
                 icon={Gauge}
-                value={snap.ocupacion14d.ratio === null ? "—" : formatPercent(snap.ocupacion14d.ratio)}
+                // Bajo 10% un entero redondea a "0%" aunque haya ventas: se muestra con un decimal.
+                value={
+                  snap.ocupacion14d.ratio === null
+                    ? "—"
+                    : formatPercent(snap.ocupacion14d.ratio, snap.ocupacion14d.ratio > 0 && snap.ocupacion14d.ratio < 0.1 ? 1 : 0)
+                }
                 hint={`${formatNumber(snap.ocupacion14d.slotsVendidos)} de ${formatNumber(snap.ocupacion14d.slotsDisponibles)} slots-día`}
                 tone="primary"
               />

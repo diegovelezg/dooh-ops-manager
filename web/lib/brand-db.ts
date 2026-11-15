@@ -1,10 +1,16 @@
 // Marcas: vista derivada, no tabla. La marca es metadato del pedido
 // (io_orders.brand); la recurrencia se calcula agrupando IOs +
 // líneas por marca: pauta, inversión, pantallas y agencias.
-import { getSupabase } from "@/lib/supabase";
+import { selectLines, selectOrders } from "@/lib/orders-store";
+import { listScreensBrief } from "@/lib/screens-store";
+import { listCompanies } from "@/lib/crm-store";
 import { BRANDS_SORT_ALIASES } from "@/lib/sort";
 import { joinHaystack, matchScore, matchTokens, normalizeSearch, tokenizeSearch } from "@/lib/search-text";
-import { toISODateUTC } from "@/lib/format";
+import { todayIn } from "@/lib/format";
+import { getStoreTimeZone } from "@/lib/stores-db";
+// `ends_at` de la IO es el último día inclusivo (yyyy-mm-dd): activa hasta ese día del tenant.
+const isLive = (ends: string | null | undefined, status: unknown, today: string): boolean =>
+  Boolean(ends) && (ends as string) >= today && String(status ?? "") !== "cancelled";
 
 export interface BrandRow {
   brand: string;
@@ -68,32 +74,25 @@ const brandKeyOf = (b: string) => b.trim().toUpperCase();
 export async function getBrandDetail(storeId: string, brandKey: string): Promise<BrandDetail | null> {
   const key = brandKeyOf(brandKey);
   if (!key) return null;
-  const db = getSupabase();
-  const { data: orders, error } = await db
-    .from("io_orders")
-    .select("id,io_number,brand,status,starts_at,ends_at,advertiser_company_id,billing_company_id")
-    .eq("store_id", storeId)
-    .not("brand", "is", null);
-  if (error) throw new Error(`CRM read: ${error.message}`);
-  const ios = ((orders ?? []) as Array<Record<string, unknown>>).filter(
+  const ios = (await selectOrders(storeId, { withBrand: true })).filter(
     (o) => typeof o.brand === "string" && brandKeyOf(o.brand) === key,
   );
   if (ios.length === 0) return null;
   const brand = String((ios[0] as Record<string, unknown>).brand ?? key);
 
   const ioIds = ios.map((o) => String(o.id));
-  const [{ data: lines }, { data: screens }, { data: companies }] = await Promise.all([
-    db.from("io_lines").select("io_id,rate_minor,screen_id").eq("store_id", storeId).in("io_id", ioIds),
-    db.from("inv_screens").select("id,external_ref,name").eq("store_id", storeId),
-    db.from("crm_companies").select("id,name,kind").eq("store_id", storeId),
+  const [lines, screens, companies] = await Promise.all([
+    selectLines(storeId, ioIds),
+    listScreensBrief(storeId),
+    listCompanies(storeId),
   ]);
   const screenName = new Map<string, string>();
-  for (const s of ((screens ?? []) as Array<Record<string, unknown>>)) {
+  for (const s of screens) {
     const ref = typeof s.external_ref === "string" && s.external_ref ? s.external_ref : String(s.name ?? s.id);
     screenName.set(String(s.id), ref);
   }
   const companyById = new Map<string, { name: string; kind: string | null }>();
-  for (const c of ((companies ?? []) as Array<Record<string, unknown>>)) {
+  for (const c of companies) {
     companyById.set(String(c.id), {
       name: String(c.name ?? ""),
       kind: (c.kind as string | null) ?? null,
@@ -112,7 +111,7 @@ export async function getBrandDetail(storeId: string, brandKey: string): Promise
     }
   }
 
-  const today = toISODateUTC(new Date());
+  const today = todayIn(await getStoreTimeZone(storeId));
   const detailIos: BrandIO[] = ios.map((o) => {
     const r = o as Record<string, unknown>;
     const id = String(r.id);
@@ -171,7 +170,7 @@ export async function getBrandDetail(storeId: string, brandKey: string): Promise
     for (const s of o.screens) screensSet.add(s);
     if (o.starts_at && (!first_start || o.starts_at < first_start)) first_start = o.starts_at;
     if (o.ends_at && (!last_end || o.ends_at > last_end)) last_end = o.ends_at;
-    if (o.ends_at && o.ends_at >= today && o.status !== "cancelled") active = true;
+    if (isLive(o.ends_at, o.status, today)) active = true;
   }
   return {
     brand,
@@ -202,35 +201,28 @@ export async function listBrands(
   storeId: string,
   opts: { q?: string; sortKey?: BrandsSortKey; sortDir?: BrandsSortDir } = {},
 ): Promise<BrandRow[]> {
-  const db = getSupabase();
-  const { data: orders, error } = await db
-    .from("io_orders")
-    .select("id,io_number,brand,status,starts_at,ends_at,billing_company_id,currency")
-    .eq("store_id", storeId)
-    .not("brand", "is", null);
-  if (error) throw new Error(`CRM read: ${error.message}`);
-  const ios = ((orders ?? []) as Array<Record<string, unknown>>).filter((o) =>
+  const ios = (await selectOrders(storeId, { withBrand: true })).filter((o) =>
     typeof o.brand === "string" && (o.brand as string).trim() !== "",
   );
   if (ios.length === 0) return [];
 
   const ioIds = ios.map((o) => String(o.id));
-  const [{ data: lines }, { data: screens }, { data: companies }] = await Promise.all([
-    db.from("io_lines").select("io_id,rate_minor,screen_id").eq("store_id", storeId).in("io_id", ioIds),
-    db.from("inv_screens").select("id,external_ref,name").eq("store_id", storeId),
-    db.from("crm_companies").select("id,name").eq("store_id", storeId),
+  const [lines, screens, companies] = await Promise.all([
+    selectLines(storeId, ioIds),
+    listScreensBrief(storeId),
+    listCompanies(storeId),
   ]);
   const screenName = new Map<string, string>();
-  for (const s of ((screens ?? []) as Array<Record<string, unknown>>)) {
+  for (const s of screens) {
     const ref = typeof s.external_ref === "string" && s.external_ref ? s.external_ref : String(s.name ?? s.id);
     screenName.set(String(s.id), ref);
   }
   const billingName = new Map<string, string>();
-  for (const c of ((companies ?? []) as Array<Record<string, unknown>>)) {
+  for (const c of companies) {
     billingName.set(String(c.id), String(c.name ?? ""));
   }
 
-  const today = toISODateUTC(new Date());
+  const today = todayIn(await getStoreTimeZone(storeId));
   const byBrand = new Map<string, BrandRow & { screensSet: Set<string>; agenciesSet: Set<string> }>();
   const keyOf = (b: string) => b.trim().toUpperCase();
   for (const o of ios) {
@@ -247,7 +239,7 @@ export async function listBrands(
     const ends = typeof o.ends_at === "string" ? o.ends_at : null;
     if (starts && (!row.first_start || starts < row.first_start)) row.first_start = starts;
     if (ends && (!row.last_end || ends > row.last_end)) row.last_end = ends;
-    if (ends && ends >= today && String(o.status ?? "") !== "cancelled") row.active = true;
+    if (isLive(ends, o.status, today)) row.active = true;
     const bill = typeof o.billing_company_id === "string" ? billingName.get(o.billing_company_id) : null;
     if (bill) row.agenciesSet.add(bill);
   }
@@ -271,7 +263,7 @@ export async function listBrands(
   const sortKey = opts.sortKey ?? "brand";
   const ascending = (opts.sortDir ?? (sortKey === "brand" ? "asc" : "desc")) === "asc";
   // Fuzzy en JS (la marca es derivada por agregación): tildes, multi-token
-  // en desorden y ranking. Mismo recall que los RPC.
+  // en desorden y ranking. Mismo recall que la búsqueda de empresas.
   const scored = [...byBrand.values()]
     .map((r) => {
       const { screensSet, agenciesSet, ...rest } = r;

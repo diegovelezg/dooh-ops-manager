@@ -6,8 +6,9 @@
 // Regla de moneda: solo la moneda de la vista (siempre explícita, nunca null).
 // El resto se ignora (nunca se suman PEN+USD).
 import { normalizeCurrency } from "@/lib/currency";
-import { addMonths, firstOfMonth, monthLabelES, toMonthKey } from "@/lib/format";
+import { dayStartMs, MONTH_SHORT_ES, monthFirstISO, todayIn } from "@/lib/format";
 export interface FinanceOrder {
+  order_id: string;
   total_amount: number;
   currency: string | null;
   placed_at: string | null;
@@ -36,13 +37,18 @@ function sameCurrency(orderCur: string | null, viewCurrency: string): boolean {
   return normalizeCurrency(orderCur, "") === normalizeCurrency(viewCurrency, "");
 }
 
-/** Últimos 12 meses calendario incluyendo el mes actual. */
-function last12MonthKeys(now = Date.now()): Array<{ key: string; label: string }> {
-  const base = firstOfMonth(new Date(now));
+/** Mes calendario del tenant ("2026-10") de un instante. */
+function monthKeyOf(t: number, tz: string): string {
+  return monthFirstISO(todayIn(tz, t)).slice(0, 7);
+}
+
+/** Últimos 12 meses calendario del tenant incluyendo el mes actual. */
+function last12MonthKeys(tz: string, now: number): Array<{ key: string; label: string }> {
+  const today = todayIn(tz, now);
   const out: Array<{ key: string; label: string }> = [];
   for (let i = 11; i >= 0; i -= 1) {
-    const d = addMonths(base, -i);
-    out.push({ key: toMonthKey(d), label: monthLabelES(d) });
+    const first = monthFirstISO(today, -i);
+    out.push({ key: first.slice(0, 7), label: MONTH_SHORT_ES[Number(first.slice(5, 7)) - 1] ?? "—" });
   }
   return out;
 }
@@ -50,25 +56,25 @@ function last12MonthKeys(now = Date.now()): Array<{ key: string; label: string }
 export function bucketMonthly(
   orders: FinanceOrder[],
   viewCurrency: string,
+  tz: string,
   now = Date.now(),
 ): MonthBucket[] {
-  const keys = last12MonthKeys(now);
-  const map = new Map(keys.map((k) => [k.key, { salesMinor: 0, orders: 0 }]));
+  const keys = last12MonthKeys(tz, now);
+  const map = new Map(keys.map((k) => [k.key, { salesMinor: 0, orders: new Set<string>() }]));
   for (const o of orders) {
     if (!sameCurrency(o.currency, viewCurrency)) continue;
     if (!o.placed_at) continue;
     const t = Date.parse(o.placed_at);
     if (Number.isNaN(t)) continue;
-    const k = toMonthKey(new Date(t));
-    const b = map.get(k);
+    const b = map.get(monthKeyOf(t, tz));
     if (!b) continue; // fuera de la ventana 12m
     b.salesMinor += Number(o.total_amount ?? 0);
-    b.orders += 1;
+    b.orders.add(o.order_id);
   }
   return keys.map((k) => ({
     ...k,
     salesMinor: map.get(k.key)?.salesMinor ?? 0,
-    orders: map.get(k.key)?.orders ?? 0,
+    orders: map.get(k.key)?.orders.size ?? 0,
   }));
 }
 
@@ -80,18 +86,21 @@ function deltaPct(cur: number, prev: number): number | null {
 export function computeFinanceKpis(
   orders: FinanceOrder[],
   viewCurrency: string,
+  tz: string,
   now = Date.now(),
 ): FinanceKpis {
   // Ventana por mes calendario (alineada con Hoy): mes en curso a la fecha
   // vs el mismo tramo del mes anterior (igual cantidad de días, comparable
-  // a inicio de mes). Atribución por placed_at, monto completo por orden.
-  const monthStart = firstOfMonth(new Date(now)).getTime();
-  const prevStart = addMonths(new Date(monthStart), -1).getTime();
-  const elapsed = Math.max(0, now - monthStart);
+  // a inicio de mes). Importes por línea; órdenes distintas dentro de cada tramo.
+  const today = todayIn(tz, now);
+  const monthStart = dayStartMs(monthFirstISO(today, 0), tz);
+  const prevStart = dayStartMs(monthFirstISO(today, -1), tz);
+  // Tramo comparable, acotado al mes anterior (mes corto: 30-mar vs feb).
+  const prevEnd = Math.min(prevStart + Math.max(0, now - monthStart), monthStart);
   let salesCur = 0;
-  let ordersCur = 0;
+  const ordersCur = new Set<string>();
   let salesPrev = 0;
-  let ordersPrev = 0;
+  const ordersPrev = new Set<string>();
   for (const o of orders) {
     if (!sameCurrency(o.currency, viewCurrency)) continue;
     if (!o.placed_at) continue;
@@ -100,17 +109,17 @@ export function computeFinanceKpis(
     const amt = Number(o.total_amount ?? 0);
     if (t >= monthStart) {
       salesCur += amt;
-      ordersCur += 1;
-    } else if (t >= prevStart && t < prevStart + elapsed) {
+      ordersCur.add(o.order_id);
+    } else if (t >= prevStart && t < prevEnd) {
       salesPrev += amt;
-      ordersPrev += 1;
+      ordersPrev.add(o.order_id);
     }
   }
   return {
     salesMesMinor: salesCur,
-    ordersMes: ordersCur,
-    ticketMesMinor: ordersCur > 0 ? Math.round(salesCur / ordersCur) : 0,
+    ordersMes: ordersCur.size,
+    ticketMesMinor: ordersCur.size > 0 ? Math.round(salesCur / ordersCur.size) : 0,
     salesDeltaPct: deltaPct(salesCur, salesPrev),
-    ordersDeltaPct: deltaPct(ordersCur, ordersPrev),
+    ordersDeltaPct: deltaPct(ordersCur.size, ordersPrev.size),
   };
 }

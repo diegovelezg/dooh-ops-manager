@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { createInvoiceAction } from "@/lib/order-flow-actions";
-import { todayLima, addDays } from "@/lib/availability-utils";
+import { todayIn, addDays } from "@/lib/availability-utils";
 import { formatDate, formatMoney, parseISODate, toISODateLocal } from "@/lib/format";
 import { Money } from "@/components/money";
 import { cn } from "cn";
@@ -26,6 +26,7 @@ import {
   type InvoiceFieldKey,
 } from "./invoice-validation";
 import { splitTax } from "@/lib/tax-rate";
+import { useTz } from "@/components/tenant-time";
 
 /** Date picker shadcn (Popover + Calendar, mismo patrón que nueva-form):
  *  fecha válida o vacía (con X para limpiar), nunca texto libre. */
@@ -48,6 +49,7 @@ export function InvoiceDatePicker({
   disabledDays?: (date: Date) => boolean;
   pickerLabel: string;
 }) {
+  const tz = useTz();
   const [open, setOpen] = useState(false);
   const selected = parseISODate(value);
 
@@ -73,7 +75,7 @@ export function InvoiceDatePicker({
                 )}
               >
                 <CalendarIcon aria-hidden />
-                {selected ? formatDate(value) : "Elegir…"}
+                {selected ? formatDate(value, tz) : "Elegir…"}
               </Button>
             }
           />
@@ -139,7 +141,8 @@ export function InvoiceForm({
   onSaved?: () => void;
   onCancel?: () => void;
 }) {
-  const issue0 = todayLima();
+  const tz = useTz();
+  const issue0 = todayIn(tz);
   const suggestion = useMemo(
     () => suggestedInvoiceAmount(grossMinor ?? 0, invoicedMinor ?? 0, taxCountry ?? null),
     [grossMinor, invoicedMinor, taxCountry],

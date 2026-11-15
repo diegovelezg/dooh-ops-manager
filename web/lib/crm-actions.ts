@@ -2,21 +2,44 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { getSupabase } from "@/lib/supabase";
+import { repointCampaignContact } from "@/lib/orders-store";
+import { isUniqueViolation } from "@/lib/surreal";
 import { isCompanyKind, normalizeCompany, normalizeContact, type CompanyKind } from "@/lib/crm";
 import { normalizeCommissionPct } from "@/lib/agency-commission";
 import { resolveActor } from "@/lib/actor";
 import { resolveTenantStoreAction as resolveTenantStore } from "@/lib/tenant";
 import { createLogger } from "@/lib/log";
+import * as store from "@/lib/crm-store";
 
 const log = createLogger("crm");
 
 export interface CrmState {
+  orderId?: string;
   ok: boolean;
   message: string;
 }
 
 // SSOT: resolveTenantStore = resolveTenantStoreAction (ver lib/tenant.ts).
+
+/** Cuerpo común de las acciones: error inesperado → log + mensaje (nunca se traga). */
+function fail(action: string, e: unknown): CrmState {
+  const message = e instanceof Error ? e.message : "Error.";
+  log.error(action, { error: message });
+  return { ok: false, message };
+}
+
+/** Resuelve tenant y exige `need` (por defecto seller). */
+async function guard(need: "seller" | "admin" | null = "seller"): Promise<{ storeId: string } | CrmState> {
+  const t = await resolveTenantStore();
+  if ("error" in t) return { ok: false, message: t.error };
+  if (need) {
+    const { denyRole } = await import("@/lib/tenant");
+    const denied = await denyRole(t.storeId, need);
+    if (denied) return { ok: false, message: denied };
+  }
+  return { storeId: t.storeId };
+}
+const denied = (g: { storeId: string } | CrmState): g is CrmState => "ok" in g;
 
 export async function createCompanyAction(form: FormData): Promise<CrmState> {
   const t = await resolveTenantStore("seller");
@@ -39,8 +62,8 @@ export async function createCompanyAction(form: FormData): Promise<CrmState> {
   }
   if (hasCommissionInput) {
     const { denyRole } = await import("@/lib/tenant");
-    const denied = await denyRole(t.storeId, "admin");
-    if (denied) return { ok: false, message: denied };
+    const deny = await denyRole(t.storeId, "admin");
+    if (deny) return { ok: false, message: deny };
   }
   const parsed = normalizeCompany({
     name: String(form.get("name") ?? ""),
@@ -67,65 +90,39 @@ export async function createCompanyAction(form: FormData): Promise<CrmState> {
     return { ok: false, message: "Tipo de proveedor requerido." };
   }
   try {
-    const db = getSupabase();
     const actor = await resolveActor();
-    const { data, error } = await db
-      .from("crm_companies")
-      .insert({
-        store_id: t.storeId,
-        ...parsed.value,
-        ...(hasCommissionInput ? { agency_commission_pct: commissionPct } : {}),
-        created_by: actor,
-        updated_by: actor,
-      })
-      .select("id")
-      .maybeSingle();
-    if (error || !data) { log.warn("createCompanyAction", { fail: `DB write: ${error?.message ?? "sin id"}` }); return { ok: false, message: `DB write: ${error?.message ?? "sin id"}` }; }
+    await store.createCompany(t.storeId, {
+      ...parsed.value,
+      ...(hasCommissionInput ? { agency_commission_pct: commissionPct } : {}),
+      created_by: actor,
+      updated_by: actor,
+    });
     revalidatePath("/companies");
     return { ok: true, message: "Empresa creada." };
   } catch (e) {
-    log.error("createCompanyAction", { error: e instanceof Error ? e.message : String(e) });
-    return { ok: false, message: e instanceof Error ? e.message : "Error." };
+    return fail("createCompanyAction", e);
   }
 }
 
 export async function setCompanyKindAction(input: { companyId: string; kind: CompanyKind }): Promise<CrmState> {
-  const t = await resolveTenantStore();
-  if ("error" in t) return { ok: false, message: t.error };
-  const { denyRole } = await import("@/lib/tenant");
-  const denied = await denyRole(t.storeId, "seller");
-  if (denied) return { ok: false, message: denied };
+  const g = await guard();
+  if (denied(g)) return g;
   if (!isCompanyKind(input.kind)) return { ok: false, message: "Tipo requerido: agencia, anunciante o proveedor." };
   try {
-    const db = getSupabase();
-    const { data: existing } = await db
-      .from("crm_companies")
-      .select("id,deleted_at")
-      .eq("store_id", t.storeId)
-      .eq("id", input.companyId)
-      .maybeSingle();
+    const existing = await store.getCompany(g.storeId, input.companyId);
     if (!existing) return { ok: false, message: "Empresa no encontrada en esta tienda." };
-    if ((existing as Record<string, unknown>).deleted_at) {
-      return { ok: false, message: "Empresa archivada: restáurala para editarla." };
-    }
-    const { error } = await db
-      .from("crm_companies")
-      .update({
-        kind: input.kind,
-        // Al salir de proveedor el subtipo no aplica (el CHECK lo exige).
-        ...(input.kind === "proveedor" ? {} : { provider_type: null }),
-        updated_by: await resolveActor(),
-        updated_at: new Date().toISOString(),
-      })
-      .eq("store_id", t.storeId)
-      .eq("id", input.companyId);
-    if (error) { log.warn("setCompanyKindAction", { fail: `DB write: ${error.message}` }); return { ok: false, message: `DB write: ${error.message}` }; }
+    if (existing.deleted_at) return { ok: false, message: "Empresa archivada: restáurala para editarla." };
+    await store.patchCompany(g.storeId, input.companyId, {
+      kind: input.kind,
+      // Al salir de proveedor el subtipo no aplica (el esquema lo exige).
+      ...(input.kind === "proveedor" ? {} : { provider_type: null }),
+      updated_by: await resolveActor(),
+    });
     revalidatePath("/companies");
     revalidatePath(`/companies/${input.companyId}`);
     return { ok: true, message: "Tipo actualizado." };
   } catch (e) {
-    log.error("setCompanyKindAction", { error: e instanceof Error ? e.message : String(e) });
-    return { ok: false, message: e instanceof Error ? e.message : "Error." };
+    return fail("setCompanyKindAction", e);
   }
 }
 
@@ -150,27 +147,17 @@ export async function updateCompanyAction(input: {
     provider_type?: string | null;
   };
 }): Promise<CrmState> {
-  const t = await resolveTenantStore();
-  if ("error" in t) return { ok: false, message: t.error };
-  const { denyRole } = await import("@/lib/tenant");
-  const denied = await denyRole(t.storeId, "seller");
-  if (denied) return { ok: false, message: denied };
+  const g = await guard();
+  if (denied(g)) return g;
   const companyId = String(input.companyId ?? "").trim();
   if (!companyId) return { ok: false, message: "Falta empresa." };
   try {
-    const db = getSupabase();
-    const { data: existing, error: rerr } = await db
-      .from("crm_companies")
-      .select("id,name,legal_name,kind,tax_id,domain,email,phone,address,city,country,category_iab,provider_type,deleted_at")
-      .eq("store_id", t.storeId)
-      .eq("id", companyId)
-      .maybeSingle();
-    if (rerr || !existing) return { ok: false, message: "Empresa no encontrada en esta tienda." };
-    const row = existing as Record<string, unknown>;
+    const row = await store.getCompany(g.storeId, companyId);
+    if (!row) return { ok: false, message: "Empresa no encontrada en esta tienda." };
     if (row.deleted_at) return { ok: false, message: "Empresa archivada: restáurala para editarla." };
     if (!isCompanyKind(row.kind)) return { ok: false, message: "Define el tipo de empresa primero." };
     const p = (input.patch ?? {}) as Record<string, string | null | undefined>;
-    const val = (k: string, fb: unknown) => (p[k] !== undefined ? p[k] : (fb as string | null));
+    const val = (k: string, fb: unknown) => (p[k] !== undefined ? p[k] : ((fb as string | null | undefined) ?? null));
     const parsed = normalizeCompany({
       name: String(val("name", row.name) ?? ""),
       legal_name: val("legal_name", row.legal_name) as string | null,
@@ -186,33 +173,26 @@ export async function updateCompanyAction(input: {
       provider_type: val("provider_type", row.provider_type),
     });
     if (!parsed.ok) return { ok: false, message: parsed.error };
-    const actor = await resolveActor();
-    const { error } = await db
-      .from("crm_companies")
-      .update({
-        name: parsed.value.name,
-        legal_name: parsed.value.legal_name,
-        tax_id: parsed.value.tax_id,
-        domain: parsed.value.domain,
-        email: parsed.value.email,
-        phone: parsed.value.phone,
-        address: parsed.value.address,
-        city: parsed.value.city,
-        country: parsed.value.country,
-        category_iab: parsed.value.category_iab,
-        provider_type: parsed.value.provider_type,
-        updated_by: actor,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("store_id", t.storeId)
-      .eq("id", companyId);
-    if (error) { log.warn("updateCompanyAction", { fail: `DB write: ${error.message}` }); return { ok: false, message: `DB write: ${error.message}` }; }
+    const v = parsed.value;
+    await store.patchCompany(g.storeId, companyId, {
+      name: v.name,
+      legal_name: v.legal_name,
+      tax_id: v.tax_id,
+      domain: v.domain,
+      email: v.email,
+      phone: v.phone,
+      address: v.address,
+      city: v.city,
+      country: v.country,
+      category_iab: v.category_iab,
+      provider_type: v.provider_type,
+      updated_by: await resolveActor(),
+    });
     revalidatePath("/companies");
     revalidatePath(`/companies/${companyId}`);
     return { ok: true, message: "Empresa actualizada." };
   } catch (e) {
-    log.error("updateCompanyAction", { error: e instanceof Error ? e.message : String(e) });
-    return { ok: false, message: e instanceof Error ? e.message : "Error." };
+    return fail("updateCompanyAction", e);
   }
 }
 
@@ -231,26 +211,16 @@ export async function updateContactAction(input: {
     is_primary?: boolean;
   };
 }): Promise<CrmState> {
-  const t = await resolveTenantStore();
-  if ("error" in t) return { ok: false, message: t.error };
-  const { denyRole } = await import("@/lib/tenant");
-  const denied = await denyRole(t.storeId, "seller");
-  if (denied) return { ok: false, message: denied };
+  const g = await guard();
+  if (denied(g)) return g;
   const contactId = String(input.contactId ?? "").trim();
   if (!contactId) return { ok: false, message: "Falta contacto." };
   try {
-    const db = getSupabase();
-    const { data: existing, error: rerr } = await db
-      .from("crm_contacts")
-      .select("id,company_id,first_name,last_name,email,phone,job_title,is_primary,deleted_at")
-      .eq("store_id", t.storeId)
-      .eq("id", contactId)
-      .maybeSingle();
-    if (rerr || !existing) return { ok: false, message: "Contacto no encontrado en esta tienda." };
-    const row = existing as Record<string, unknown>;
+    const row = await store.getContact(g.storeId, contactId);
+    if (!row) return { ok: false, message: "Contacto no encontrado en esta tienda." };
     if (row.deleted_at) return { ok: false, message: "Contacto archivado: restáuralo para editarlo." };
     const p = (input.patch ?? {}) as Record<string, string | boolean | null | undefined>;
-    const sVal = (k: string, fb: unknown) => (p[k] !== undefined ? (p[k] as string | null) : (fb as string | null));
+    const sVal = (k: string, fb: unknown) => (p[k] !== undefined ? (p[k] as string | null) : ((fb as string | null | undefined) ?? null));
     const parsed = normalizeContact({
       company_id: typeof row.company_id === "string" ? row.company_id : null,
       first_name: sVal("first_name", row.first_name),
@@ -261,29 +231,12 @@ export async function updateContactAction(input: {
       is_primary: p.is_primary !== undefined ? p.is_primary === true : row.is_primary === true,
     });
     if (!parsed.ok) return { ok: false, message: parsed.error };
-    const actor = await resolveActor();
-    const now = new Date().toISOString();
-    if (parsed.value.is_primary && typeof row.company_id === "string" && row.company_id) {
-      await db
-        .from("crm_contacts")
-        .update({ is_primary: false, updated_by: actor, updated_at: now })
-        .eq("store_id", t.storeId)
-        .eq("company_id", row.company_id)
-        .eq("is_primary", true)
-        .neq("id", contactId);
-    }
-    const { error } = await db
-      .from("crm_contacts")
-      .update({ ...parsed.value, updated_by: actor, updated_at: now })
-      .eq("store_id", t.storeId)
-      .eq("id", contactId);
-    if (error) { log.warn("updateContactAction", { fail: `DB write: ${error.message}` }); return { ok: false, message: `DB write: ${error.message}` }; }
+    await store.patchContact(g.storeId, contactId, parsed.value as Record<string, unknown>, await resolveActor());
     revalidatePath("/contacts");
     revalidatePath("/companies");
     return { ok: true, message: "Contacto actualizado." };
   } catch (e) {
-    log.error("updateContactAction", { error: e instanceof Error ? e.message : String(e) });
-    return { ok: false, message: e instanceof Error ? e.message : "Error." };
+    return fail("updateContactAction", e);
   }
 }
 
@@ -296,43 +249,24 @@ export async function setAgencyCommissionAction(input: {
   companyId: string;
   pct: number | string | null;
 }): Promise<CrmState> {
-  const t = await resolveTenantStore();
-  if ("error" in t) return { ok: false, message: t.error };
-  const { denyRole } = await import("@/lib/tenant");
-  const denied = await denyRole(t.storeId, "admin");
-  if (denied) return { ok: false, message: denied };
+  const g = await guard("admin");
+  if (denied(g)) return g;
   const pct = normalizeCommissionPct(input.pct);
   // Distingue "limpiar" (null/"") de valor inválido (p. ej. 150, 12.5 o texto).
   const raw = input.pct;
   const wantsClear = raw === null || raw === undefined || (typeof raw === "string" && raw.trim() === "");
   if (!wantsClear && pct === null) return { ok: false, message: "Comisión inválida (entero 0-100)." };
   try {
-    const db = getSupabase();
-    const { data: co } = await db
-      .from("crm_companies")
-      .select("id,kind,deleted_at")
-      .eq("store_id", t.storeId)
-      .eq("id", input.companyId)
-      .maybeSingle();
+    const co = await store.getCompany(g.storeId, input.companyId);
     if (!co) return { ok: false, message: "Empresa no encontrada en esta tienda." };
-    if ((co as Record<string, unknown>).deleted_at) {
-      return { ok: false, message: "Empresa archivada: restáurala para editarla." };
-    }
-    if ((co as Record<string, unknown>).kind !== "agencia") {
-      return { ok: false, message: "Solo las agencias llevan comisión." };
-    }
-    const { error } = await db
-      .from("crm_companies")
-      .update({ agency_commission_pct: pct, updated_by: await resolveActor(), updated_at: new Date().toISOString() })
-      .eq("store_id", t.storeId)
-      .eq("id", input.companyId);
-    if (error) { log.warn("setAgencyCommissionAction", { fail: `DB write: ${error.message}` }); return { ok: false, message: `DB write: ${error.message}` }; }
+    if (co.deleted_at) return { ok: false, message: "Empresa archivada: restáurala para editarla." };
+    if (co.kind !== "agencia") return { ok: false, message: "Solo las agencias llevan comisión." };
+    await store.patchCompany(g.storeId, input.companyId, { agency_commission_pct: pct, updated_by: await resolveActor() });
     revalidatePath("/companies");
     revalidatePath(`/companies/${input.companyId}`);
     return { ok: true, message: pct === null ? "Comisión eliminada." : "Comisión actualizada." };
   } catch (e) {
-    log.error("setAgencyCommissionAction", { error: e instanceof Error ? e.message : String(e) });
-    return { ok: false, message: e instanceof Error ? e.message : "Error." };
+    return fail("setAgencyCommissionAction", e);
   }
 }
 
@@ -345,41 +279,20 @@ export async function setCompanyArchivedAction(input: {
   companyId: string;
   archived: boolean;
 }): Promise<CrmState> {
-  const t = await resolveTenantStore();
-  if ("error" in t) return { ok: false, message: t.error };
-  const { denyRole } = await import("@/lib/tenant");
-  const denied = await denyRole(t.storeId, "admin");
-  if (denied) return { ok: false, message: denied };
+  const g = await guard("admin");
+  if (denied(g)) return g;
   const companyId = String(input.companyId ?? "").trim();
   if (!companyId) return { ok: false, message: "Falta empresa." };
   try {
-    const db = getSupabase();
-    const { data: existing } = await db
-      .from("crm_companies")
-      .select("id")
-      .eq("store_id", t.storeId)
-      .eq("id", companyId)
-      .maybeSingle();
-    if (!existing) return { ok: false, message: "Empresa no encontrada en esta tienda." };
-    const actor = await resolveActor();
-    const { error } = await db
-      .from("crm_companies")
-      .update({
-        deleted_at: input.archived ? new Date().toISOString() : null,
-        updated_by: actor,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("store_id", t.storeId)
-      .eq("id", companyId);
-    if (error) { log.warn("setCompanyArchivedAction", { fail: `DB write: ${error.message}` }); return { ok: false, message: `DB write: ${error.message}` }; }
+    if (!(await store.getCompany(g.storeId, companyId))) return { ok: false, message: "Empresa no encontrada en esta tienda." };
+    await store.setArchived("crm_company", g.storeId, companyId, input.archived, await resolveActor());
     revalidatePath("/companies");
     revalidatePath(`/companies/${companyId}`);
     revalidatePath("/orders");
     revalidatePath("/orders/new");
     return { ok: true, message: input.archived ? "Empresa archivada." : "Empresa restaurada." };
   } catch (e) {
-    log.error("setCompanyArchivedAction", { error: e instanceof Error ? e.message : String(e) });
-    return { ok: false, message: e instanceof Error ? e.message : "Error." };
+    return fail("setCompanyArchivedAction", e);
   }
 }
 
@@ -390,50 +303,26 @@ export async function setContactArchivedAction(input: {
   contactId: string;
   archived: boolean;
 }): Promise<CrmState> {
-  const t = await resolveTenantStore();
-  if ("error" in t) return { ok: false, message: t.error };
-  const { denyRole } = await import("@/lib/tenant");
-  const denied = await denyRole(t.storeId, "seller");
-  if (denied) return { ok: false, message: denied };
+  const g = await guard();
+  if (denied(g)) return g;
   const contactId = String(input.contactId ?? "").trim();
   if (!contactId) return { ok: false, message: "Falta contacto." };
   try {
-    const db = getSupabase();
-    const { data: existing } = await db
-      .from("crm_contacts")
-      .select("id")
-      .eq("store_id", t.storeId)
-      .eq("id", contactId)
-      .maybeSingle();
-    if (!existing) return { ok: false, message: "Contacto no encontrado en esta tienda." };
-    const actor = await resolveActor();
-    const { error } = await db
-      .from("crm_contacts")
-      .update({
-        deleted_at: input.archived ? new Date().toISOString() : null,
-        updated_by: actor,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("store_id", t.storeId)
-      .eq("id", contactId);
-    if (error) { log.warn("setContactArchivedAction", { fail: `DB write: ${error.message}` }); return { ok: false, message: `DB write: ${error.message}` }; }
+    if (!(await store.getContact(g.storeId, contactId))) return { ok: false, message: "Contacto no encontrado en esta tienda." };
+    await store.setArchived("crm_contact", g.storeId, contactId, input.archived, await resolveActor());
     revalidatePath("/companies");
     revalidatePath("/contacts");
     revalidatePath("/orders");
     revalidatePath("/orders/new");
     return { ok: true, message: input.archived ? "Contacto archivado." : "Contacto restaurado." };
   } catch (e) {
-    log.error("setContactArchivedAction", { error: e instanceof Error ? e.message : String(e) });
-    return { ok: false, message: e instanceof Error ? e.message : "Error." };
+    return fail("setContactArchivedAction", e);
   }
 }
 
 export async function createContactAction(form: FormData): Promise<CrmState> {
-  const t = await resolveTenantStore();
-  if ("error" in t) return { ok: false, message: t.error };
-  const { denyRole } = await import("@/lib/tenant");
-  const denied = await denyRole(t.storeId, "seller");
-  if (denied) return { ok: false, message: denied };
+  const g = await guard();
+  if (denied(g)) return g;
   const companyId = String(form.get("company_id") ?? "");
   if (!companyId) return { ok: false, message: "Falta empresa." };
   const parsed = normalizeContact({
@@ -448,44 +337,19 @@ export async function createContactAction(form: FormData): Promise<CrmState> {
   });
   if (!parsed.ok) return { ok: false, message: parsed.error };
   try {
-    const db = getSupabase();
     // La empresa debe ser del mismo tenant.
-    const { data: co } = await db.from("crm_companies").select("id").eq("store_id", t.storeId).eq("id", companyId).maybeSingle();
-    if (!co) return { ok: false, message: "Empresa no encontrada en esta tienda." };
+    if (!(await store.getCompany(g.storeId, companyId))) return { ok: false, message: "Empresa no encontrada en esta tienda." };
     // Dedupe por empresa: mismo email o teléfono → ya existe (idempotente con import).
-    if (parsed.value.email) {
-      const { data: dupe } = await db
-        .from("crm_contacts")
-        .select("id")
-        .eq("company_id", companyId)
-        .ilike("email", parsed.value.email)
-        .limit(1)
-        .maybeSingle();
-      if (dupe) return { ok: true, message: "Contacto ya existía." };
+    if (await store.contactExists(companyId, { email: parsed.value.email, phone: parsed.value.phone })) {
+      return { ok: true, message: "Contacto ya existía." };
     }
-    if (parsed.value.phone) {
-      const { data: dupe } = await db
-        .from("crm_contacts")
-        .select("id")
-        .eq("company_id", companyId)
-        .eq("phone", parsed.value.phone)
-        .limit(1)
-        .maybeSingle();
-      if (dupe) return { ok: true, message: "Contacto ya existía." };
-    }
-    const actor = await resolveActor();
-    if (parsed.value.is_primary) {
-      await db.from("crm_contacts").update({ is_primary: false, updated_by: actor, updated_at: new Date().toISOString() }).eq("company_id", companyId).eq("is_primary", true);
-    }
-    const { error } = await db.from("crm_contacts").insert({ store_id: t.storeId, ...parsed.value, created_by: actor, updated_by: actor });
-    if (error) { log.warn("createContactAction", { fail: `DB write: ${error.message}` }); return { ok: false, message: `DB write: ${error.message}` }; }
+    await store.createContact(g.storeId, parsed.value as Record<string, unknown>, await resolveActor());
     revalidatePath(`/companies/${companyId}`);
     revalidatePath("/companies");
     revalidatePath("/contacts");
     return { ok: true, message: "Contacto agregado." };
   } catch (e) {
-    log.error("createContactAction", { error: e instanceof Error ? e.message : String(e) });
-    return { ok: false, message: e instanceof Error ? e.message : "Error." };
+    return fail("createContactAction", e);
   }
 }
 
@@ -499,11 +363,8 @@ export async function createCompanyLinkAction(input: {
   agencyCompanyId: string;
   advertiserCompanyId: string;
 }): Promise<CrmState> {
-  const t = await resolveTenantStore();
-  if ("error" in t) return { ok: false, message: t.error };
-  const { denyRole } = await import("@/lib/tenant");
-  const denied = await denyRole(t.storeId, "seller");
-  if (denied) return { ok: false, message: denied };
+  const g = await guard();
+  if (denied(g)) return g;
   const { validateCompanyLinkPair } = await import("@/lib/company-links");
   const parsed = validateCompanyLinkPair({
     agencyCompanyId: input.agencyCompanyId,
@@ -511,14 +372,7 @@ export async function createCompanyLinkAction(input: {
   });
   if (!parsed.ok) return { ok: false, message: parsed.error };
   try {
-    const db = getSupabase();
-    const { data: cos, error: coerr } = await db
-      .from("crm_companies")
-      .select("id,kind,deleted_at")
-      .eq("store_id", t.storeId)
-      .in("id", [parsed.agencyCompanyId, parsed.advertiserCompanyId]);
-    if (coerr) { log.warn("createCompanyLinkAction", { fail: `DB read: ${coerr.message}` }); return { ok: false, message: `DB read: ${coerr.message}` }; }
-    const byId = new Map(((cos ?? []) as Array<Record<string, unknown>>).map((c) => [String(c.id), c]));
+    const byId = await store.getCompaniesById(g.storeId, [parsed.agencyCompanyId, parsed.advertiserCompanyId]);
     const agency = byId.get(parsed.agencyCompanyId);
     const advertiser = byId.get(parsed.advertiserCompanyId);
     if (!agency || !advertiser) return { ok: false, message: "Empresa no encontrada en esta tienda." };
@@ -527,25 +381,16 @@ export async function createCompanyLinkAction(input: {
     }
     if (agency.kind !== "agencia") return { ok: false, message: "La agencia debe tener tipo agencia." };
     if (advertiser.kind !== "anunciante") return { ok: false, message: "El anunciante debe tener tipo anunciante." };
-    const actor = await resolveActor();
-    const { error } = await db.from("crm_company_links").insert({
-      store_id: t.storeId,
-      agency_company_id: parsed.agencyCompanyId,
-      advertiser_company_id: parsed.advertiserCompanyId,
-      origin: "manual",
-      created_by: actor,
-      updated_by: actor,
-    });
-    if (error) {
-      if (error.code === "23505") return { ok: true, message: "El vínculo ya existía." };
-      log.warn("createCompanyLinkAction", { fail: `DB write: ${error.message}` });
-      return { ok: false, message: `DB write: ${error.message}` };
+    try {
+      await store.createLink(g.storeId, parsed.agencyCompanyId, parsed.advertiserCompanyId, await resolveActor());
+    } catch (e) {
+      if (isUniqueViolation(e)) return { ok: true, message: "El vínculo ya existía." };
+      throw e;
     }
     revalidatePath("/companies");
     return { ok: true, message: "Vínculo creado." };
   } catch (e) {
-    log.error("createCompanyLinkAction", { error: e instanceof Error ? e.message : String(e) });
-    return { ok: false, message: e instanceof Error ? e.message : "Error." };
+    return fail("createCompanyLinkAction", e);
   }
 }
 
@@ -558,11 +403,8 @@ export async function deleteCompanyLinkAction(input: {
   agencyCompanyId: string;
   advertiserCompanyId: string;
 }): Promise<CrmState> {
-  const t = await resolveTenantStore();
-  if ("error" in t) return { ok: false, message: t.error };
-  const { denyRole } = await import("@/lib/tenant");
-  const denied = await denyRole(t.storeId, "seller");
-  if (denied) return { ok: false, message: denied };
+  const g = await guard();
+  if (denied(g)) return g;
   const { validateCompanyLinkPair } = await import("@/lib/company-links");
   const parsed = validateCompanyLinkPair({
     agencyCompanyId: input.agencyCompanyId,
@@ -570,43 +412,23 @@ export async function deleteCompanyLinkAction(input: {
   });
   if (!parsed.ok) return { ok: false, message: parsed.error };
   try {
-    const db = getSupabase();
-    const { data: existing } = await db
-      .from("crm_company_links")
-      .select("id")
-      .eq("store_id", t.storeId)
-      .eq("agency_company_id", parsed.agencyCompanyId)
-      .eq("advertiser_company_id", parsed.advertiserCompanyId)
-      .maybeSingle();
-    if (!existing) return { ok: false, message: "El vínculo ya no existe." };
-    const { error } = await db
-      .from("crm_company_links")
-      .delete()
-      .eq("store_id", t.storeId)
-      .eq("agency_company_id", parsed.agencyCompanyId)
-      .eq("advertiser_company_id", parsed.advertiserCompanyId);
-    if (error) { log.warn("deleteCompanyLinkAction", { fail: `DB write: ${error.message}` }); return { ok: false, message: `DB write: ${error.message}` }; }
+    if (!(await store.linkExists(g.storeId, parsed.agencyCompanyId, parsed.advertiserCompanyId))) {
+      return { ok: false, message: "El vínculo ya no existe." };
+    }
     // Las cuentas que colgaban del par pierden su requisito (vínculo previo):
-    // se borran para no dejar atendidos huérfanos.
-    const { error: accErr } = await db
-      .from("crm_contact_accounts")
-      .delete()
-      .eq("store_id", t.storeId)
-      .eq("agency_company_id", parsed.agencyCompanyId)
-      .eq("advertiser_company_id", parsed.advertiserCompanyId);
-    if (accErr) { log.warn("deleteCompanyLinkAction", { fail: `DB write: ${accErr.message}` }); return { ok: false, message: `DB write: ${accErr.message}` }; }
+    // se borran junto al vínculo (una transacción) para no dejar atendidos huérfanos.
+    await store.deleteLinkAndAccounts(g.storeId, parsed.agencyCompanyId, parsed.advertiserCompanyId);
     revalidatePath("/companies");
     return { ok: true, message: "Vínculo eliminado." };
   } catch (e) {
-    log.error("deleteCompanyLinkAction", { error: e instanceof Error ? e.message : String(e) });
-    return { ok: false, message: e instanceof Error ? e.message : "Error." };
+    return fail("deleteCompanyLinkAction", e);
   }
 }
 
 /**
  * Cuentas que atiende un contacto de agencia (reemplazo del set).
  * Reglas: el contacto pertenece a una agencia, cada destino es anunciante y
- * el par (agencia, anunciante) ya existe en crm_company_links (primero se
+ * el par (agencia, anunciante) ya existe como vínculo (primero se
  * vinculan las empresas, luego se asignan sus contactos). Requiere seller+.
  * Sin filas = sin asignación declarada. Idempotente.
  */
@@ -614,115 +436,48 @@ export async function setContactAccountsAction(input: {
   contactId: string;
   advertiserCompanyIds: string[];
 }): Promise<CrmState> {
-  const t = await resolveTenantStore();
-  if ("error" in t) return { ok: false, message: t.error };
-  const { denyRole } = await import("@/lib/tenant");
-  const denied = await denyRole(t.storeId, "seller");
-  if (denied) return { ok: false, message: denied };
+  const g = await guard();
+  if (denied(g)) return g;
   const contactId = String(input.contactId ?? "").trim();
   if (!contactId) return { ok: false, message: "Falta el contacto." };
   const rawWanted = [...new Set((input.advertiserCompanyIds ?? []).map((id) => String(id ?? "").trim()).filter(Boolean))];
   try {
-    const db = getSupabase();
-    const { data: contact, error: cerr } = await db
-      .from("crm_contacts")
-      .select("id,company_id,deleted_at")
-      .eq("store_id", t.storeId)
-      .eq("id", contactId)
-      .maybeSingle();
-    if (cerr || !contact) return { ok: false, message: "Contacto no encontrado en esta tienda." };
-    const crow = contact as Record<string, unknown>;
+    const crow = await store.getContact(g.storeId, contactId);
+    if (!crow) return { ok: false, message: "Contacto no encontrado en esta tienda." };
     if (crow.deleted_at) return { ok: false, message: "Contacto archivado: restáuralo para asignarle cuentas." };
     const agencyId = typeof crow.company_id === "string" ? crow.company_id : null;
     if (!agencyId) return { ok: false, message: "El contacto no tiene empresa: solo contactos de agencia atienden cuentas." };
-    const { data: agency } = await db
-      .from("crm_companies")
-      .select("id,kind,deleted_at")
-      .eq("store_id", t.storeId)
-      .eq("id", agencyId)
-      .maybeSingle();
-    if (!agency) return { ok: false, message: "Empresa no encontrada en esta tienda." };
-    const arow = agency as Record<string, unknown>;
+    const arow = await store.getCompany(g.storeId, agencyId);
+    if (!arow) return { ok: false, message: "Empresa no encontrada en esta tienda." };
     if (arow.deleted_at) return { ok: false, message: "Empresa archivada: restáurala para asignar cuentas." };
     if (arow.kind !== "agencia") return { ok: false, message: "Solo los contactos de agencia atienden anunciantes." };
     const { normalizeContactAccountSet } = await import("@/lib/contact-accounts");
     const normalized = normalizeContactAccountSet({ contactId, agencyCompanyId: agencyId, advertiserCompanyIds: rawWanted });
     if (!normalized.ok) return { ok: false, message: normalized.error };
     const wanted = normalized.value.advertiserCompanyIds;
-    if (wanted.length === 0) {
-      const { error } = await db
-        .from("crm_contact_accounts")
-        .delete()
-        .eq("store_id", t.storeId)
-        .eq("contact_id", contactId);
-      if (error) { log.warn("setContactAccountsAction", { fail: `DB write: ${error.message}` }); return { ok: false, message: `DB write: ${error.message}` }; }
-      revalidatePath("/companies");
-      revalidatePath("/contacts");
-      return { ok: true, message: "Cuentas actualizadas." };
-    }
-    // Destinos: existen, activos y son anunciantes del mismo tenant.
-    const { data: targets, error: terr } = await db
-      .from("crm_companies")
-      .select("id,kind,deleted_at")
-      .eq("store_id", t.storeId)
-      .in("id", wanted);
-    if (terr) { log.warn("setContactAccountsAction", { fail: `DB read: ${terr.message}` }); return { ok: false, message: `DB read: ${terr.message}` }; }
-    const byId = new Map(((targets ?? []) as Array<Record<string, unknown>>).map((c) => [String(c.id), c]));
-    for (const id of wanted) {
-      const c = byId.get(id);
-      if (!c) return { ok: false, message: "Anunciante no encontrado en esta tienda." };
-      if (c.deleted_at != null) return { ok: false, message: "Empresa archivada: restáurala para asignarla." };
-      if (c.kind !== "anunciante") return { ok: false, message: "Las cuentas deben ser anunciantes." };
-      if (id === agencyId) return { ok: false, message: "Agencia y anunciante deben ser empresas distintas." };
-    }
-    // Vínculo previo agencia ↔ anunciante exigido (no se autocrea).
-    const { data: links, error: lerr } = await db
-      .from("crm_company_links")
-      .select("advertiser_company_id")
-      .eq("store_id", t.storeId)
-      .eq("agency_company_id", agencyId)
-      .in("advertiser_company_id", wanted);
-    if (lerr) { log.warn("setContactAccountsAction", { fail: `DB read: ${lerr.message}` }); return { ok: false, message: `DB read: ${lerr.message}` }; }
-    const linked = new Set(((links ?? []) as Array<Record<string, unknown>>).map((l) => String(l.advertiser_company_id)));
-    const missing = wanted.filter((id) => !linked.has(id));
-    if (missing.length > 0) {
-      return { ok: false, message: "Primero vincula la agencia con el anunciante y luego asigna sus contactos." };
-    }
     const actor = await resolveActor();
-    const { error: derr } = await db
-      .from("crm_contact_accounts")
-      .delete()
-      .eq("store_id", t.storeId)
-      .eq("contact_id", contactId)
-      .not("advertiser_company_id", "in", `(${wanted.join(",")})`);
-    if (derr) { log.warn("setContactAccountsAction", { fail: `DB write: ${derr.message}` }); return { ok: false, message: `DB write: ${derr.message}` }; }
     if (wanted.length > 0) {
-      const { error: uerr } = await db.from("crm_contact_accounts").upsert(
-        wanted.map((id) => ({
-          store_id: t.storeId,
-          contact_id: contactId,
-          agency_company_id: agencyId,
-          advertiser_company_id: id,
-          updated_by: actor,
-        })),
-        { onConflict: "store_id,contact_id,advertiser_company_id", ignoreDuplicates: false },
-      );
-      if (uerr) { log.warn("setContactAccountsAction", { fail: `DB write: ${uerr.message}` }); return { ok: false, message: `DB write: ${uerr.message}` }; }
-      // created_by solo en inserto: las filas existentes conservan el suyo.
-      await db
-        .from("crm_contact_accounts")
-        .update({ created_by: actor })
-        .eq("store_id", t.storeId)
-        .eq("contact_id", contactId)
-        .in("advertiser_company_id", wanted)
-        .is("created_by", null);
+      // Destinos: existen, activos y son anunciantes del mismo tenant.
+      const byId = await store.getCompaniesById(g.storeId, wanted);
+      for (const id of wanted) {
+        const c = byId.get(id);
+        if (!c) return { ok: false, message: "Anunciante no encontrado en esta tienda." };
+        if (c.deleted_at != null) return { ok: false, message: "Empresa archivada: restáurala para asignarla." };
+        if (c.kind !== "anunciante") return { ok: false, message: "Las cuentas deben ser anunciantes." };
+        if (id === agencyId) return { ok: false, message: "Agencia y anunciante deben ser empresas distintas." };
+      }
+      // Vínculo previo agencia ↔ anunciante exigido (no se autocrea).
+      const linked = await store.linkedAdvertisers(g.storeId, agencyId, wanted);
+      if (wanted.some((id) => !linked.has(id))) {
+        return { ok: false, message: "Primero vincula la agencia con el anunciante y luego asigna sus contactos." };
+      }
     }
+    await store.replaceContactAccounts(g.storeId, contactId, wanted, actor);
     revalidatePath("/companies");
     revalidatePath("/contacts");
     return { ok: true, message: "Cuentas actualizadas." };
   } catch (e) {
-    log.error("setContactAccountsAction", { error: e instanceof Error ? e.message : String(e) });
-    return { ok: false, message: e instanceof Error ? e.message : "Error." };
+    return fail("setContactAccountsAction", e);
   }
 }
 
@@ -737,11 +492,8 @@ export async function setAccountAttendantsAction(input: {
   advertiserCompanyId: string;
   contactIds: string[];
 }): Promise<CrmState> {
-  const t = await resolveTenantStore();
-  if ("error" in t) return { ok: false, message: t.error };
-  const { denyRole } = await import("@/lib/tenant");
-  const denied = await denyRole(t.storeId, "seller");
-  if (denied) return { ok: false, message: denied };
+  const g = await guard();
+  if (denied(g)) return g;
   const { normalizeAgencyAttendantsSet } = await import("@/lib/contact-accounts");
   const normalized = normalizeAgencyAttendantsSet({
     agencyCompanyId: input.agencyCompanyId,
@@ -751,14 +503,7 @@ export async function setAccountAttendantsAction(input: {
   if (!normalized.ok) return { ok: false, message: normalized.error };
   const { agencyCompanyId, advertiserCompanyId, contactIds } = normalized.value;
   try {
-    const db = getSupabase();
-    const { data: cos, error: coerr } = await db
-      .from("crm_companies")
-      .select("id,kind,deleted_at")
-      .eq("store_id", t.storeId)
-      .in("id", [agencyCompanyId, advertiserCompanyId]);
-    if (coerr) { log.warn("setAccountAttendantsAction", { fail: `DB read: ${coerr.message}` }); return { ok: false, message: `DB read: ${coerr.message}` }; }
-    const byId = new Map(((cos ?? []) as Array<Record<string, unknown>>).map((c) => [String(c.id), c]));
+    const byId = await store.getCompaniesById(g.storeId, [agencyCompanyId, advertiserCompanyId]);
     const agency = byId.get(agencyCompanyId);
     const advertiser = byId.get(advertiserCompanyId);
     if (!agency || !advertiser) return { ok: false, message: "Empresa no encontrada en esta tienda." };
@@ -769,76 +514,24 @@ export async function setAccountAttendantsAction(input: {
     if (advertiser.kind !== "anunciante") return { ok: false, message: "El anunciante debe tener tipo anunciante." };
     if (contactIds.length > 0) {
       // Los atendidos pertenecen a la agencia y están activos.
-      const { data: team, error: terr } = await db
-        .from("crm_contacts")
-        .select("id,company_id,deleted_at")
-        .eq("store_id", t.storeId)
-        .in("id", contactIds);
-      if (terr) { log.warn("setAccountAttendantsAction", { fail: `DB read: ${terr.message}` }); return { ok: false, message: `DB read: ${terr.message}` }; }
-      const teamById = new Map(((team ?? []) as Array<Record<string, unknown>>).map((c) => [String(c.id), c]));
+      const team = await store.getContactsById(g.storeId, contactIds);
       for (const id of contactIds) {
-        const c = teamById.get(id);
+        const c = team.get(id);
         if (!c) return { ok: false, message: "Contacto no encontrado en esta tienda." };
         if (c.deleted_at != null) return { ok: false, message: "Contacto archivado: restáuralo para asignarlo." };
         if (c.company_id !== agencyCompanyId) return { ok: false, message: "Solo contactos de la agencia pueden atenderla." };
       }
       // Vínculo previo exigido (no se autocrea).
-      const { data: link, error: lerr } = await db
-        .from("crm_company_links")
-        .select("id")
-        .eq("store_id", t.storeId)
-        .eq("agency_company_id", agencyCompanyId)
-        .eq("advertiser_company_id", advertiserCompanyId)
-        .maybeSingle();
-      if (lerr) { log.warn("setAccountAttendantsAction", { fail: `DB read: ${lerr.message}` }); return { ok: false, message: `DB read: ${lerr.message}` }; }
-      if (!link) {
+      if (!(await store.linkExists(g.storeId, agencyCompanyId, advertiserCompanyId))) {
         return { ok: false, message: "Primero vincula la agencia con el anunciante y luego asigna sus contactos." };
       }
     }
-    const actor = await resolveActor();
-    if (contactIds.length === 0) {
-      const { error: derr } = await db
-        .from("crm_contact_accounts")
-        .delete()
-        .eq("store_id", t.storeId)
-        .eq("agency_company_id", agencyCompanyId)
-        .eq("advertiser_company_id", advertiserCompanyId);
-      if (derr) { log.warn("setAccountAttendantsAction", { fail: `DB write: ${derr.message}` }); return { ok: false, message: `DB write: ${derr.message}` }; }
-    } else {
-      const { error: derr } = await db
-        .from("crm_contact_accounts")
-        .delete()
-        .eq("store_id", t.storeId)
-        .eq("agency_company_id", agencyCompanyId)
-        .eq("advertiser_company_id", advertiserCompanyId)
-        .not("contact_id", "in", `(${contactIds.join(",")})`);
-      if (derr) { log.warn("setAccountAttendantsAction", { fail: `DB write: ${derr.message}` }); return { ok: false, message: `DB write: ${derr.message}` }; }
-      const { error: uerr } = await db.from("crm_contact_accounts").upsert(
-        contactIds.map((id) => ({
-          store_id: t.storeId,
-          contact_id: id,
-          agency_company_id: agencyCompanyId,
-          advertiser_company_id: advertiserCompanyId,
-          updated_by: actor,
-        })),
-        { onConflict: "store_id,contact_id,advertiser_company_id", ignoreDuplicates: false },
-      );
-      if (uerr) { log.warn("setAccountAttendantsAction", { fail: `DB write: ${uerr.message}` }); return { ok: false, message: `DB write: ${uerr.message}` }; }
-      await db
-        .from("crm_contact_accounts")
-        .update({ created_by: actor })
-        .eq("store_id", t.storeId)
-        .eq("agency_company_id", agencyCompanyId)
-        .eq("advertiser_company_id", advertiserCompanyId)
-        .in("contact_id", contactIds)
-        .is("created_by", null);
-    }
+    await store.replaceAttendants(g.storeId, agencyCompanyId, advertiserCompanyId, contactIds, await resolveActor());
     revalidatePath("/companies");
     revalidatePath("/contacts");
     return { ok: true, message: "Atendidos actualizados." };
   } catch (e) {
-    log.error("setAccountAttendantsAction", { error: e instanceof Error ? e.message : String(e) });
-    return { ok: false, message: e instanceof Error ? e.message : "Error." };
+    return fail("setAccountAttendantsAction", e);
   }
 }
 
@@ -870,25 +563,15 @@ export async function mergeContactsAction(input: { survivorId: string; loserIds:
   const loserIds = [...new Set((input.loserIds ?? []).filter((id) => id && id !== input.survivorId))];
   if (!input.survivorId || loserIds.length === 0) return { ok: false, message: "Elige el contacto que queda y al menos uno para fusionar." };
   try {
-    const db = getSupabase();
-    const ids = [input.survivorId, ...loserIds];
-    const { data, error } = await db
-      .from("crm_contacts")
-      .select("id,company_id,first_name,last_name,email,phone,job_title,is_primary")
-      .eq("store_id", t.storeId)
-      .in("id", ids);
-    if (error) throw new Error(`DB read: ${error.message}`);
-    const found = new Map(((data ?? []) as Array<Record<string, unknown>>).map((c) => [String(c.id), c]));
+    const found = await store.getContactsById(t.storeId, [input.survivorId, ...loserIds]);
     const survivor = found.get(input.survivorId);
     if (!survivor) return { ok: false, message: "El contacto que queda ya no existe." };
     const losers = loserIds.map((id) => found.get(id)).filter((c): c is Record<string, unknown> => !!c);
     if (losers.length === 0) return { ok: false, message: "Los contactos a fusionar ya no existen." };
-    const actor = await resolveActor();
-    const now = new Date().toISOString();
     // Rellena huecos del sobreviviente con datos de los eliminados (en orden).
     // Se aplica DESPUÉS de borrar: si el sobreviviente absorbe el email o
     // teléfono de un eliminado de su misma empresa, el update no choca con
-    // los unique (company_id, lower(email)) / (company_id, phone).
+    // los índices únicos.
     const patch: Record<string, unknown> = {};
     for (const f of ["first_name", "last_name", "email", "phone", "job_title"] as const) {
       if (survivor[f] == null || String(survivor[f]).trim() === "") {
@@ -898,43 +581,15 @@ export async function mergeContactsAction(input: { survivorId: string; loserIds:
     }
     const survivorCompany = (survivor.company_id as string | null) ?? null;
     const promote = survivor.is_primary !== true && losers.some((l) => l.is_primary === true);
-    if (promote) {
-      patch.is_primary = true;
-      // Respeta 1 principal por empresa (unique contacts_company_primary_uidx).
-      if (survivorCompany) {
-        const { error: demoteErr } = await db
-          .from("crm_contacts")
-          .update({ is_primary: false, updated_by: actor })
-          .eq("store_id", t.storeId)
-          .eq("company_id", survivorCompany)
-          .eq("is_primary", true)
-          .neq("id", input.survivorId);
-        if (demoteErr) throw new Error(`DB write: ${demoteErr.message}`);
-      }
-    }
-    // Re-apunta campañas (única FK a contacts) ANTES de borrar: el delete
-    // pondría primary_contact_id en NULL y se perdería el vínculo.
-    const { error: campErr } = await db
-      .from("io_campaigns")
-      .update({ primary_contact_id: input.survivorId })
-      .eq("store_id", t.storeId)
-      .in("primary_contact_id", loserIds);
-    if (campErr) throw new Error(`DB write: ${campErr.message}`);
-    const { error: delErr } = await db.from("crm_contacts").delete().eq("store_id", t.storeId).in("id", loserIds);
-    if (delErr) throw new Error(`DB write: ${delErr.message}`);
-    if (Object.keys(patch).length > 0) {
-      const { error: upErr } = await db
-        .from("crm_contacts")
-        .update({ ...patch, updated_by: actor, updated_at: now })
-        .eq("store_id", t.storeId)
-        .eq("id", input.survivorId);
-      if (upErr) throw new Error(`DB write: ${upErr.message}`);
-    }
+    if (promote) patch.is_primary = true;
+    // Re-apunta campañas ANTES de borrar: sin esto (REFERENCE ON DELETE UNSET) el
+    // delete dejaría primary_contact vacío y se perdería el vínculo.
+    await repointCampaignContact(t.storeId, loserIds, input.survivorId);
+    await store.mergeContacts(t.storeId, input.survivorId, loserIds, patch, await resolveActor(), promote, survivorCompany);
     revalidatePath("/contacts");
     revalidatePath("/contacts/duplicates");
     return { ok: true, message: `Fusionados ${losers.length + 1} contactos en uno.` };
   } catch (e) {
-    log.error("mergeContactsAction", { error: e instanceof Error ? e.message : String(e) });
-    return { ok: false, message: e instanceof Error ? e.message : "Error." };
+    return fail("mergeContactsAction", e);
   }
 }

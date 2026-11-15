@@ -202,7 +202,7 @@ export function generatingBadgeDisplay(): BadgeDisplay & { title: string } {
 
 /** Hito Autorizada (OM registrado): éxito fijo con ✓. */
 export function autorizadaBadgeDisplay(): BadgeDisplay & { title: string } {
-  return { variant: "success", label: "Autorizada", title: "Hito: OM registrado, la orden está autorizada" };
+  return { variant: "success", label: "Autorizada", title: "Documento requerido registrado para la versión vigente del acuerdo" };
 }
 
 /** IO sin dato (—): gris quieto, nunca "Borrador" inventado. */

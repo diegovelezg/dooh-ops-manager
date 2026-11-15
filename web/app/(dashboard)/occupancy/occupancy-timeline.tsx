@@ -9,12 +9,13 @@ import { Button } from "@/components/ui/button";
 import { SegmentedControl } from "@/components/buttons";
 import { FilterSearch } from "@/components/filter-search";
 import { FilterSelect, SelectItem } from "@/components/filter-select";
-import { addDays, formatDate, formatDayMonth, formatNumber, todayLima } from "@/lib/format";
+import { addDays, formatDate, formatDayMonth, formatNumber, todayIn } from "@/lib/format";
 import { dayCellState, type DayCellState } from "@/lib/occupancy-cells";
 import { DEFAULT_SLOTS_PER_SCREEN } from "@/lib/store-slots";
 import { PantallaDrawer } from "../screens/pantalla-drawer";
 import { OccupancyDayDrawer } from "./occupancy-day-drawer";
 import type { PeriodAvailability } from "@/lib/availability";
+import { useTz } from "@/components/tenant-time";
 
 export interface OccupancyScreen {
   id: string;
@@ -68,6 +69,7 @@ export function OccupancyTimeline({
   estado: OccupancyEstado;
   truncated?: boolean;
 }) {
+  const tz = useTz();
   const router = useRouter();
   const sp = useSearchParams();
   const [isPending, startTransition] = useTransition();
@@ -129,7 +131,7 @@ export function OccupancyTimeline({
     if (np) params.set("proveedor", np);
     if (ne && ne !== "all") params.set("estado", ne);
     if (ndias !== 14) params.set("dias", String(ndias));
-    const today = todayLima();
+    const today = todayIn(tz);
     if (nd !== today) params.set("desde", nd);
     startTransition(() => {
       router.replace(`/occupancy${params.toString() ? `?${params.toString()}` : ""}`);
@@ -255,10 +257,10 @@ export function OccupancyTimeline({
                     const hold = holdSet.get(s.id)?.has(d) ?? false;
                     const label =
                       state === "free"
-                        ? `Libre · ${formatDate(d)} (${cap} slots)`
+                        ? `Libre · ${formatDate(d, tz)} (${cap} slots)`
                         : state === "over"
-                          ? `Sobreventa · ${formatDate(d)}: ${taken}/${cap} slots — clic para desglose`
-                          : `${state === "full" ? "Lleno" : "Parcial"} · ${formatDate(d)}: ${taken}/${cap} slots (${pct}%)${hold ? " · con hold" : ""} — clic para desglose`;
+                          ? `Sobreventa · ${formatDate(d, tz)}: ${taken}/${cap} slots — clic para desglose`
+                          : `${state === "full" ? "Lleno" : "Parcial"} · ${formatDate(d, tz)}: ${taken}/${cap} slots (${pct}%)${hold ? " · con hold" : ""} — clic para desglose`;
                     return (
                       <td key={d} className="px-1 py-1 text-center">
                         <button

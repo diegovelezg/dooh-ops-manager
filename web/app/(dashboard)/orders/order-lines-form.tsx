@@ -6,7 +6,7 @@ import { CancelButton, SubmitButton } from "@/components/buttons";
 import { AppCard } from "@/components/app-card";
 import { updateOrderLinesAction } from "@/lib/order-actions";
 import { toastFormError } from "@/components/ui/form-feedback";
-import { addDays, diffDaysInclusive, displayEndOfSafe, formatNumber, isoDayPart, parseISODate } from "@/lib/format";
+import { addDays, diffDaysInclusive, dayOf, displayEndOfSafe, formatNumber, parseISODate } from "@/lib/format";
 import { Money } from "@/components/money";
 import { PantallaDrawer } from "../screens/pantalla-drawer";
 import {
@@ -19,6 +19,7 @@ import {
 } from "./order-screens";
 import { plural } from "./order-screens/types";
 import { parseSlotsInput } from "@/lib/order-lines";
+import { useTz } from "@/components/tenant-time";
 
 function uniq<T>(xs: T[]): T[] {
   return [...new Set(xs)];
@@ -45,18 +46,19 @@ export function OrderLinesForm({
   onSaved?: () => void;
   onCancel?: () => void;
 }) {
+  const tz = useTz();
   const screensById = useMemo(() => new Map(screens.map((s) => [s.id, s])), [screens]);
 
-  // Meta de las líneas actuales (para pantallas fuera del top 200/inactivas
+  // Meta de las líneas actuales (para pantallas inactivas
   // y para preservar notas): nombre/detalle/notas + total original + slots.
   const initialMeta = useMemo(() => {
     const m = new Map<string, { name: string | null; detail: string | null; notes: string | null; starts: string; ends: string; totalMajor: number | null; slots: number }>();
     for (const l of initialLines) {
       const sid = typeof l.screen_id === "string" ? l.screen_id : "";
       if (!sid || m.has(sid)) continue;
-      const starts = typeof l.starts_at === "string" ? (isoDayPart(l.starts_at) ?? "") : "";
+      const starts = typeof l.starts_at === "string" ? dayOf(l.starts_at, tz) : "";
       const endsRaw = typeof l.ends_at === "string" ? l.ends_at : "";
-      const ends = displayEndOfSafe(endsRaw) ?? isoDayPart(endsRaw) ?? "";
+      const ends = displayEndOfSafe(endsRaw, tz) ?? "";
       const rateMinor = Number(l.rate_minor ?? NaN);
       const totalMajor = Number.isFinite(rateMinor) ? rateMinor / 100 : null;
       const rawSlots = Number(l.cant_slots);
@@ -71,9 +73,9 @@ export function OrderLinesForm({
       });
     }
     return m;
-  }, [initialLines]);
+  }, [initialLines, tz]);
 
-  // Pantalla resoluble: del picker o fallback (línea existente fuera del top).
+  // Pantalla resoluble: del picker o de una línea existente de pantalla inactiva.
   const resolveScreen = (id: string): ScreenPick | null => {
     const s = screensById.get(id);
     if (s) return s;

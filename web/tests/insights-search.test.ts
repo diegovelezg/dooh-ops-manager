@@ -1,6 +1,6 @@
 // Búsqueda del muro/inbox: mismo mecanismo fuzzy que screens, órdenes y
 // marcas — normalización ES + tokens AND + ranking. El feed filtra en JS
-// (20 avisos en cliente: sin RPC, como marcas y órdenes).
+// (20 avisos en cliente: sin ida al servidor, como marcas y órdenes).
 // Corre con: npm test (node:test stdlib vía tsx, sin dependencias nuevas).
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";

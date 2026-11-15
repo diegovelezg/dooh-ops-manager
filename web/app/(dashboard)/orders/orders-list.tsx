@@ -226,7 +226,7 @@ export function OrdersList({
                 </DataTableTd>
                 <DataTableTd>
                   <span className="flex flex-col items-start gap-1">
-                    <OrderStageBadge stage={o.stage} isDraft={o.status === "draft"} />
+                    <OrderStageBadge stage={o.stage} isDraft={o.status === "draft"} commercialState={o.commercial_state} />
                     {o.has_om && o.stage !== "cancelada" && <OrderAutorizadaBadge />}
                   </span>
                 </DataTableTd>

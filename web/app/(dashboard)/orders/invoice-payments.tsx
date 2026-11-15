@@ -11,9 +11,10 @@ import { toast } from "@/components/ui/toast";
 import { recordInvoicePaymentAction, voidInvoicePaymentAction } from "@/lib/order-flow-actions";
 import { invoicePaidMinor, toBillingInvoice } from "@/lib/billing-status";
 import { Money } from "@/components/money";
-import { formatDate, formatDateTime, isValidISODate, todayLima, toISODateLocal } from "@/lib/format";
+import { formatDate, formatDateTime, isValidISODate, todayIn, toISODateLocal } from "@/lib/format";
 import { InvoiceDatePicker } from "./invoice-form";
 import { parseAmountToMinor } from "./invoice-validation";
+import { useTz } from "@/components/tenant-time";
 
 type Field = "amount" | "date" | "reference" | "reason";
 
@@ -23,9 +24,10 @@ export function InvoicePayments({ invoice, currency, canEdit, onSaved }: {
   canEdit: boolean;
   onSaved: () => void;
 }) {
+  const tz = useTz();
   const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState("");
-  const [date, setDate] = useState(todayLima);
+  const [date, setDate] = useState(() => todayIn(tz));
   const [reference, setReference] = useState("");
   const [requestId, setRequestId] = useState(() => crypto.randomUUID());
   const [reversing, setReversing] = useState<string | null>(null);
@@ -35,7 +37,7 @@ export function InvoicePayments({ invoice, currency, canEdit, onSaved }: {
   const { invalid, mark, clear, bad, focusFirst } = useInvalidFields<Field>();
   const [now] = useState(() => Date.now());
   const inv = toBillingInvoice(invoice);
-  const paid = invoicePaidMinor(inv, now);
+  const paid = invoicePaidMinor(inv, now, tz);
   const balance = Math.max(0, Number(invoice.amount_minor) - paid);
   const editable = canEdit && ["issued", "paid", "overdue"].includes(String(invoice.status));
   const payments = invoice.payments as Array<Record<string, unknown>>;
@@ -49,7 +51,7 @@ export function InvoicePayments({ invoice, currency, canEdit, onSaved }: {
   function save() {
     const minor = parseAmountToMinor(amount);
     if (minor === null || minor > balance) return fail(["amount"], "Indica un monto válido que no supere el saldo.");
-    if (!isValidISODate(date) || date > todayLima()) return fail(["date"], "Indica una fecha de cobro válida, hasta hoy.");
+    if (!isValidISODate(date) || date > todayIn(tz)) return fail(["date"], "Indica una fecha de cobro válida, hasta hoy.");
     if (!reference.trim() || reference.trim().length > 200) return fail(["reference"], "Indica una referencia (máx 200).");
     startTransition(async () => {
       const result = await recordInvoicePaymentAction({ invoiceId: String(invoice.id), requestId, amountMinor: minor, paidOn: date, reference });
@@ -97,9 +99,9 @@ export function InvoicePayments({ invoice, currency, canEdit, onSaved }: {
                 <span className="font-medium tabular-nums"><Money amountMinor={Number(p.amount_minor)} currency={currency} decimals={2} />{p.voided_at ? " · Revertido" : ""}</span>
                 {editable && !p.voided_at && <Button size="xs" variant="ghost" disabled={pending} onClick={() => { setReversing(String(p.id)); setReason(""); }}>Revertir registro</Button>}
               </div>
-              <p className="text-muted-foreground">{p.source === "legacy_balance" ? "Saldo histórico declarado · fecha de cobro desconocida" : `${formatDate(p.paid_on)} · ${String(p.reference)}`}</p>
-              {p.created_by != null && <p className="text-xs text-muted-foreground">Registrado por {String(p.created_by)} · {formatDateTime(p.created_at)}</p>}
-              {p.voided_at != null && <p className="text-xs text-muted-foreground">Reversión: {String(p.void_reason)} · {formatDateTime(p.voided_at)}{p.voided_by ? ` · ${String(p.voided_by)}` : ""}</p>}
+              <p className="text-muted-foreground">{p.source === "legacy_balance" ? "Saldo histórico declarado · fecha de cobro desconocida" : `${formatDate(p.paid_on, tz)} · ${String(p.reference)}`}</p>
+              {p.created_by != null && <p className="text-xs text-muted-foreground">Registrado por {String(p.created_by)} · {formatDateTime(p.created_at, tz)}</p>}
+              {p.voided_at != null && <p className="text-xs text-muted-foreground">Reversión: {String(p.void_reason)} · {formatDateTime(p.voided_at, tz)}{p.voided_by ? ` · ${String(p.voided_by)}` : ""}</p>}
             </li>
           ))}
         </ul>
@@ -117,7 +119,7 @@ export function InvoicePayments({ invoice, currency, canEdit, onSaved }: {
               <Label htmlFor="payment-amount">Monto del abono ({currency}) *</Label>
               <Input id="payment-amount" name="amount" inputMode="decimal" value={amount} onChange={(e) => { setAmount(e.target.value); clear("amount"); changed(); }} disabled={pending} placeholder="3,000.00" aria-invalid={invalid.has("amount")} className={bad("amount")} />
             </div>
-            <InvoiceDatePicker label="Fecha de cobro *" fieldKey="date" value={date} onChange={(v) => { setDate(v); clear("date"); changed(); }} disabled={pending} invalid={invalid.has("date")} disabledDays={(d) => toISODateLocal(d) > todayLima()} pickerLabel="Fecha de cobro" />
+            <InvoiceDatePicker label="Fecha de cobro *" fieldKey="date" value={date} onChange={(v) => { setDate(v); clear("date"); changed(); }} disabled={pending} invalid={invalid.has("date")} disabledDays={(d) => toISODateLocal(d) > todayIn(tz)} pickerLabel="Fecha de cobro" />
             <div className="form-field">
               <Label htmlFor="payment-reference">Referencia *</Label>
               <Input id="payment-reference" name="reference" value={reference} onChange={(e) => { setReference(e.target.value); clear("reference"); changed(); }} maxLength={200} disabled={pending} placeholder="Operación bancaria o recibo" aria-invalid={invalid.has("reference")} className={bad("reference")} />

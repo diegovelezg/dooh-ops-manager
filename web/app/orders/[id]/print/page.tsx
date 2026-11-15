@@ -1,6 +1,6 @@
 import { connection } from "next/server";
 import type { Metadata } from "next";
-import { isSupabaseConfigured } from "@/lib/supabase";
+import { isDbConfigured } from "@/lib/surreal";
 import { getOrderDetail } from "@/lib/orders-db";
 import {
   displayStoreName,
@@ -34,15 +34,14 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   try {
     const { id } = await params;
-    const { getSupabase } = await import("@/lib/supabase");
-    const db = getSupabase();
-    const { data } = await db.from("io_orders").select("io_number,store_id").eq("id", id).maybeSingle();
+    const { findOwned } = await import("@/lib/orders-store");
+    const data = await findOwned("io_order", id);
     if (!data) return { title: "Nota de pedido" };
-    const storeId = String((data as Record<string, unknown>).store_id ?? "");
+    const storeId = String(data.store_id ?? "");
     if ((await requireMyStoreAccess(storeId).catch(() => false)) === false) {
       return { title: "Nota de pedido" };
     }
-    return { title: `Nota de pedido ${String((data as Record<string, unknown>).io_number ?? "")}` };
+    return { title: `Nota de pedido ${String(data.io_number ?? "")}` };
   } catch {
     return { title: "Nota de pedido" };
   }
@@ -81,12 +80,13 @@ export default async function OrderPrintPage({
   const { id } = await params;
   const sp = await searchParams;
 
-  if (!isSupabaseConfigured()) {
+  if (!isDbConfigured()) {
     return <PrintError message="Base de datos no disponible." />;
   }
   const { active } = await getMyActiveStore(sp.store ?? null);
   const storeId = active?.id ?? null;
-  if (!storeId) return <PrintError message="Sin tienda conectada." />;
+  if (!storeId || !active) return <PrintError message="Sin tienda conectada." />;
+  const tz = active.timezone;
   if ((await requireMyStoreAccess(storeId).catch(() => false)) === false) {
     return <PrintError message="Orden no encontrada." />;
   }
@@ -135,8 +135,10 @@ export default async function OrderPrintPage({
       ? (o.payment_terms_days as number)
       : null;
   const terms = termsDays !== null ? paymentTermsLabel(termsDays) : snap ? "—" : str(o.payment_terms);
-  const notes =
-    typeof o.notes === "string" && o.notes.trim() ? o.notes.trim() : null;
+  const frozenTerms = o.snapshot_json && typeof o.snapshot_json === "object" && typeof (o.snapshot_json as Record<string, unknown>).commercial_terms === "object"
+    ? (o.snapshot_json as Record<string, unknown>).commercial_terms as Record<string, unknown> : null;
+  const notesRaw = frozenTerms ? frozenTerms.notes : o.notes;
+  const notes = typeof notesRaw === "string" && notesRaw.trim() ? notesRaw.trim() : null;
   const txt = (v: unknown): string | null =>
     typeof v === "string" && v.trim() ? v.trim() : null;
   // Opción B: solo intermediaria vinculada (columnas de texto eliminadas).
@@ -144,7 +146,7 @@ export default async function OrderPrintPage({
   const linkedAgencyTax = (snap ? snap.agency?.tax_id : detail.agency_tax_id) ?? null;
   const hasIntermediary = Boolean(linkedAgencyName);
   // Dirección: solo lectura desde la empresa (sin columna en la orden).
-  const billingAddress = detail.billing_company_address;
+  const billingAddress = frozenTerms ? txt(frozenTerms.billing_address) : detail.billing_company_address;
   // Solo contactos vinculados (columnas de texto eliminadas).
   const snapContacts = snap?.contacts ?? null;
   const pocRef = snapContacts?.billing ?? detail.contacts.billing;
@@ -174,7 +176,7 @@ export default async function OrderPrintPage({
   const paymentLine = paymentLink
     ? [paymentLink.name, paymentLink.email].filter(Boolean).join(" ")
     : null;
-  const now = formatDateTime(new Date().toISOString());
+  const now = formatDateTime(new Date().toISOString(), tz);
   const moneyLabel =
     currency === "PEN"
       ? "Soles"
@@ -223,7 +225,7 @@ export default async function OrderPrintPage({
           <div>
             <dt style={headDt}>Fecha </dt>
             <dd style={{ display: "inline", margin: 0, fontWeight: 600 }}>
-              {formatDate(o.created_at)}
+              {formatDate(o.created_at, tz)}
             </dd>
           </div>
           <div>
@@ -377,7 +379,7 @@ export default async function OrderPrintPage({
               </thead>
               <tbody>
                 {lines.map((l) => {
-                  const fin = displayEndOfSafe(l.ends_at);
+                  const fin = displayEndOfSafe(l.ends_at, tz);
                   const dd =
                     typeof l.cant_dias === "number" && l.cant_dias > 0
                       ? l.cant_dias
@@ -394,10 +396,10 @@ export default async function OrderPrintPage({
                       <td style={cell}>{str(l.screen_technology)}</td>
                       <td style={cell}>{str(l.screen_venue)}</td>
                       <td style={{ ...cell, whiteSpace: "nowrap" }}>
-                        {formatDate(l.starts_at)}
+                        {formatDate(l.starts_at, tz)}
                       </td>
                       <td style={{ ...cell, whiteSpace: "nowrap" }}>
-                        {fin ? formatDate(fin) : "—"}
+                        {fin ? formatDate(fin, tz) : "—"}
                       </td>
                       <td align="right" style={cell}>
                         {dd ?? "—"}
@@ -448,7 +450,7 @@ export default async function OrderPrintPage({
 
       <NpSection n="VIII" title="Condiciones del servicio">
         <p style={{ margin: 0 }}>
-          {txt(o.service_clauses) ??
+          {txt(frozenTerms ? frozenTerms.service_clauses : o.service_clauses) ??
             `${storeName} podrá reubicar la pauta por fuerza mayor, siempre y cuando el cliente esté conforme con la reubicación. Todo arte pasa por aprobación de ${storeName}.`}
         </p>
       </NpSection>

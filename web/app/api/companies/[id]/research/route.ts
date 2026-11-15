@@ -1,4 +1,4 @@
-import { getSupabase } from "@/lib/supabase";
+import { getCompany, listContactsOfCompanies } from "@/lib/crm-store";
 import { requireRouteEntity } from "@/lib/api/guard";
 import { normalizeDomain } from "@/lib/company-domains";
 import { apiLog } from "@/lib/log";
@@ -10,28 +10,15 @@ import {
 } from "@/lib/company-research";
 
 async function loadCompanyContext(storeId: string, id: string) {
-  const db = getSupabase();
-  const { data: company, error } = await db
-    .from("crm_companies")
-    .select("id,name,domain,email,country")
-    .eq("store_id", storeId)
-    .eq("id", id)
-    .maybeSingle();
-  if (error) throw new Error(`CRM read: ${error.message}`);
-  if (!company) return null;
-  const c = company as Record<string, unknown>;
-  const { data: contacts } = await db
-    .from("crm_contacts")
-    .select("email")
-    .eq("store_id", storeId)
-    .eq("company_id", id)
-    .limit(200);
+  const c = await getCompany(storeId, id);
+  if (!c) return null;
+  const contacts = (await listContactsOfCompanies(storeId, [id], 200)) as Array<Record<string, unknown>>;
   return {
     name: String(c.name ?? ""),
     domain: (c.domain as string | null) ?? null,
     email: (c.email as string | null) ?? null,
     country: (c.country as string | null) ?? null,
-    contacts: ((contacts ?? []) as Array<Record<string, unknown>>).map((r) => ({
+    contacts: contacts.map((r) => ({
       email: (r.email as string | null) ?? null,
     })),
   };
@@ -39,7 +26,7 @@ async function loadCompanyContext(storeId: string, id: string) {
 
 async function guard(id: string) {
   const NOT_FOUND = Response.json({ error: "Empresa no encontrada." }, { status: 404 });
-  const loaded = await requireRouteEntity("crm_companies", id, "store_id", "Empresa no encontrada.");
+  const loaded = await requireRouteEntity("crm_company", id, "Empresa no encontrada.");
   if (loaded instanceof Response) return { error: NOT_FOUND };
   return { auth: loaded.auth, storeId: loaded.storeId };
 }

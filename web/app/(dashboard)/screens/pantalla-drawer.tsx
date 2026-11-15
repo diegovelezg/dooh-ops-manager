@@ -649,6 +649,7 @@ export function PantallaDrawer({ screenId, onClose }: { screenId: string; onClos
               )}
             </div>
             <dl className="mt-4 grid gap-x-6 gap-y-3 border-t border-border/60 pt-4 sm:grid-cols-2">
+              <Field label="Propiedad">{s.ownership === "own" ? "Propia" : "De proveedor"}</Field>
               <Field label="Proveedor">{detail.supplier_name ?? "—"}</Field>
               <Field label="Ref. externa">
                 <span className="font-mono text-[12px]">{str(s.external_ref)}</span>

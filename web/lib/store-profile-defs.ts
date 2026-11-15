@@ -1,7 +1,7 @@
 // Definiciones puras del perfil del tenant + arquetipos de churn.
 // Módulo SIN imports server: lo importan Client Components
 // (profile-proposals, tenant-profile-form), tests tsx y código servidor.
-// Todo lo que toque Supabase vive en `lib/store-profiles.ts` (solo servidor).
+// Todo lo que toque la DB vive en `lib/store-profiles.ts` (solo servidor).
 
 export type BusinessModel = "b2c" | "b2b" | "hybrid";
 export type CatalogType =

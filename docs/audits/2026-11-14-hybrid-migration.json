@@ -1,0 +1,18 @@
+{
+  "applied": 1,
+  "counts": {
+    "io_order": 1,
+    "io_line": 2,
+    "io_agency_order": 1,
+    "io_creative": 0,
+    "io_photo_check": 0,
+    "io_invoice": 0,
+    "io_invoice_payment": 0,
+    "inv_screen": 203,
+    "inv_venue": 203,
+    "crm_company": 21,
+    "crm_contact": 11
+  },
+  "existingValuesPreserved": true,
+  "mismatches": []
+}

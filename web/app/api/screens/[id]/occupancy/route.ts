@@ -1,7 +1,9 @@
-import { getSupabase } from "@/lib/supabase";
+import { consumesCapacity } from "@/lib/order-workflow";
+import { findEntity } from "@/lib/entity-lookup";
+import { listScreenDayBookings, listScreenDayLines } from "@/lib/orders-store";
 import { requireStoreAccess } from "@/lib/api/guard";
-import { displayEndOf, isHoldFresh } from "@/lib/availability";
-import { addDays, isoDayPart, limaDayStart, todayLima } from "@/lib/format";
+import { addDays, dayOf, dayStart, displayEndOf, todayIn } from "@/lib/format";
+import { getStoreTimeZone } from "@/lib/stores-db";
 import { type OccupiedRange } from "@/lib/availability-utils";
 import { DEFAULT_SLOTS_PER_SCREEN } from "@/lib/store-slots";
 import { apiLog } from "@/lib/log";
@@ -27,90 +29,63 @@ interface OccupancyItem {
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id: screenId } = await params;
   try {
-    const db = getSupabase();
-    const { data } = await db.from("inv_screens").select("store_id").eq("id", screenId).maybeSingle();
-    if (!data) return Response.json({ error: "Pantalla no encontrada." }, { status: 404 });
-    const storeId = String((data as Record<string, unknown>).store_id ?? "");
+    const screen = await findEntity("inv_screen", screenId);
+    if (!screen) return Response.json({ error: "Pantalla no encontrada." }, { status: 404 });
+    const storeId = String(screen.store_id ?? "");
     const access = await requireStoreAccess(storeId);
     if (access instanceof Response) return Response.json({ error: "Pantalla no encontrada." }, { status: 404 });
 
     const url = new URL(req.url);
     const clamp = (v: string | null, fb: number) => {
+      if (v === null || v.trim() === "") return fb;
       const n = Number(v);
       return Number.isInteger(n) && n >= 0 && n <= 365 ? n : fb;
     };
     const past = clamp(url.searchParams.get("past"), 90);
     const future = clamp(url.searchParams.get("future"), 120);
-    const today = todayLima();
+    const tz = await getStoreTimeZone(storeId);
+    const today = todayIn(tz);
     const from = addDays(today, -past);
     const to = addDays(today, future);
-    const qStart = limaDayStart(from);
-    const qEnd = limaDayStart(addDays(to, 1));
+    const qStart = dayStart(from, tz);
+    const qEnd = dayStart(addDays(to, 1), tz);
 
     const items: OccupancyItem[] = [];
 
-    const { data: lines, error: lerr } = await db
-      .from("io_lines")
-      .select("starts_at,ends_at,cant_slots,io_orders!insertion_order_lines_io_id_fkey!inner(io_number,brand,status,created_at)")
-      .eq("store_id", storeId)
-      .eq("screen_id", screenId)
-      .lt("starts_at", qEnd)
-      .gt("ends_at", qStart);
-    if (lerr) throw new Error(`Occupancy lines: ${lerr.message}`);
-    for (const l of (lines ?? []) as Array<Record<string, unknown>>) {
-      const o = l.io_orders as unknown as Record<string, unknown> | null;
-      if (!o || o.status === "cancelled") continue;
-      if (o.status === "draft" && !isHoldFresh(typeof o.created_at === "string" ? o.created_at : null)) continue;
+    for (const l of await listScreenDayLines(storeId, screenId, qStart, qEnd)) {
+      if (l.status === "cancelled") continue;
+      if (!consumesCapacity(l)) continue;
       const qty = Number(l.cant_slots ?? 1);
       items.push({
-        starts: isoDayPart(l.starts_at) ?? "",
-        ends: displayEndOf(String(l.ends_at)),
-        io_number: typeof o.io_number === "string" ? o.io_number : null,
-        brand: typeof o.brand === "string" ? o.brand : null,
-        status: typeof o.status === "string" ? o.status : "—",
+        starts: dayOf(String(l.starts_at), tz),
+        ends: displayEndOf(String(l.ends_at), tz),
+        io_number: typeof l.io_number === "string" ? l.io_number : null,
+        brand: typeof l.brand === "string" ? l.brand : null,
+        status: typeof l.status === "string" ? l.status : "—",
         source: "order",
         slots: Number.isFinite(qty) && qty >= 1 ? Math.floor(qty) : 1,
       });
     }
 
-    const { data: slots, error: serr } = await db
-      .from("inv_slots")
-      .select("id")
-      .eq("store_id", storeId)
-      .eq("screen_id", screenId);
-    if (serr) throw new Error(`Occupancy slots: ${serr.message}`);
-    const slotIds = ((slots ?? []) as Array<Record<string, unknown>>).map((s) => String(s.id));
-    if (slotIds.length > 0) {
-      const { data: books, error: berr } = await db
-        .from("inv_bookings")
-        .select("starts_at,ends_at,status,io_orders!bookings_insertion_order_id_fkey(io_number,brand)")
-        .eq("store_id", storeId)
-        .in("slot_id", slotIds)
-        .neq("status", "cancelled")
-        .lt("starts_at", qEnd)
-        .gt("ends_at", qStart);
-      if (berr) throw new Error(`Occupancy bookings: ${berr.message}`);
-      for (const b of (books ?? []) as Array<Record<string, unknown>>) {
-        const o = b.io_orders as unknown as Record<string, unknown> | null;
-        items.push({
-          starts: isoDayPart(b.starts_at) ?? "",
-          ends: displayEndOf(String(b.ends_at)),
-          io_number: o && typeof o.io_number === "string" ? o.io_number : null,
-          brand: o && typeof o.brand === "string" ? o.brand : null,
-          status: typeof b.status === "string" ? b.status : "—",
-          source: "booking",
-          slots: 1,
-        });
-      }
+    for (const b of await listScreenDayBookings(storeId, screenId, qStart, qEnd)) {
+      items.push({
+        starts: dayOf(String(b.starts_at), tz),
+        ends: displayEndOf(String(b.ends_at), tz),
+        io_number: typeof b.io_number === "string" ? b.io_number : null,
+        brand: typeof b.brand === "string" ? b.brand : null,
+        status: typeof b.status === "string" ? b.status : "—",
+        source: "booking",
+        slots: 1,
+      });
     }
 
     items.sort((a, b) => (a.starts < b.starts ? -1 : a.starts > b.starts ? 1 : 0));
     const { getPeriodAvailability } = await import("@/lib/availability");
-    const avail = await getPeriodAvailability(storeId, [screenId], from, to, {}).catch(() => null);
-    const capacity = avail?.capacities[screenId] ?? DEFAULT_SLOTS_PER_SCREEN;
-    const remainingByDay: Record<string, number> = avail?.remaining[screenId] ?? {};
+    const avail = await getPeriodAvailability(storeId, [screenId], from, to, {});
+    const capacity = avail.capacities[screenId] ?? DEFAULT_SLOTS_PER_SCREEN;
+    const remainingByDay: Record<string, number> = avail.remaining[screenId] ?? {};
     // Días sin cupo (q=1) → rangos contiguos para el calendario.
-    const fullDays = [...(avail?.conflicts.find((c) => c.screen_id === screenId)?.blockedDays ?? [])].sort();
+    const fullDays = [...(avail.conflicts.find((c) => c.screen_id === screenId)?.blockedDays ?? [])].sort();
     const ranges: OccupiedRange[] = [];
     let rs: string | null = null;
     let rp: string | null = null;

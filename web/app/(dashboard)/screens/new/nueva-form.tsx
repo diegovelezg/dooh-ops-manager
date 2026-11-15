@@ -43,6 +43,7 @@ export function NuevaPantallaForm({
   const router = useRouter();
   const [state, action, pending] = useActionState(createScreenSubmitAction, initial);
   const [supplierId, setSupplierId] = useState<string>("__none");
+  const [ownership, setOwnership] = useState<"own" | "supplier">("own");
   const [technology, setTechnology] = useState<string>("__none");
   const [modality, setModality] = useState<string>("digital");
   const normalizedDefault = String(defaultCountry ?? "").trim().toUpperCase();
@@ -268,6 +269,8 @@ export function NuevaPantallaForm({
     const fd = new FormData(e.currentTarget);
     const errs = validateScreenFields({
       name: String(fd.get("name") ?? ""),
+      ownership,
+      supplierId: ownership === "supplier" ? supplierId : "",
       venueId: "__new",
       venueAddress: String(fd.get("venue_address") ?? ""),
       width: String(fd.get("width_m") ?? ""),
@@ -302,7 +305,7 @@ export function NuevaPantallaForm({
     venueDistrict.trim() !== "" &&
     venueCity.trim() !== "" &&
     countryOk &&
-    supplierId !== "__none" &&
+    (ownership === "own" || supplierId !== "__none") &&
     (modality === "static" || technology !== "__none") &&
     price.trim() !== "" &&
     width.trim() !== "" &&
@@ -462,6 +465,18 @@ export function NuevaPantallaForm({
           </div>
         )}
         <div className="form-field sm:col-span-2">
+          Propiedad *
+          <input type="hidden" name="ownership" value={ownership} />
+          <Select value={ownership} onValueChange={(v) => {
+            if (v !== "own" && v !== "supplier") return;
+            setOwnership(v);
+            setSupplierId("__none");
+          }} items={{ own: "Propia", supplier: "De un proveedor" }} disabled={pending}>
+            <SelectTrigger aria-label="Propiedad de la pantalla"><SelectValue /></SelectTrigger>
+            <SelectContent><SelectItem value="own">Propia</SelectItem><SelectItem value="supplier">De un proveedor</SelectItem></SelectContent>
+          </Select>
+        </div>
+        {ownership === "supplier" && <div className="form-field sm:col-span-2">
           Proveedor *
           <input type="hidden" name="supplier_id" value={supplierId} />
           <Select
@@ -473,7 +488,7 @@ export function NuevaPantallaForm({
             ])}
             disabled={pending}
           >
-            <SelectTrigger aria-label="Proveedor" className="w-full">
+            <SelectTrigger aria-label="Proveedor" data-field="supplier" className={`w-full${bad("supplier")}`}>
               <SelectValue placeholder="Sin especificar" />
             </SelectTrigger>
             <SelectContent>
@@ -483,7 +498,7 @@ export function NuevaPantallaForm({
               ))}
             </SelectContent>
           </Select>
-        </div>
+        </div>}
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

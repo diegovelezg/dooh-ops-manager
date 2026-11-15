@@ -1,12 +1,14 @@
-// Perfil del tenant: lecturas/escrituras a Supabase (solo servidor:
-// usa service_role vía @/lib/supabase, nunca importar este módulo en
-// Client Components). Lo puro (tipos, ARCHETYPES, heurísticas de slots)
+// Perfil del tenant: lecturas/escrituras a SurrealDB (solo servidor,
+// nunca importar este módulo en Client Components). Lo puro (tipos, ARCHETYPES, heurísticas de slots)
 // vive en `lib/store-profile-defs.ts`, apto para clientes y tests.
 // Este módulo re-exporta lo puro por compatibilidad: el código servidor
 // puede seguir importando de `@/lib/store-profiles`.
 // (Sin `import "server-only"` a propósito: los tests `tsx --test` corren en
 // node plano y el paquete lanza fuera de React Server Components.)
-import { getSupabase, isSupabaseConfigured } from "@/lib/supabase";
+
+import { isDbConfigured, surql } from "@/lib/surreal";
+import { getStore } from "@/lib/stores-db";
+import { countCompanies } from "@/lib/crm-store";
 
 export * from "./store-profile-defs";
 import {
@@ -20,10 +22,8 @@ import {
 
 export async function getProfileSignals(storeId: string): Promise<(ProfileSignals & { truncated: boolean }) | null> {
   // Fase 2: señales desde CRM DOOH (companies), no desde customers ecommerce.
-  if (!isSupabaseConfigured()) return null;
-  const db = getSupabase();
-  const { count } = await db.from("crm_companies").select("id", { count: "exact", head: true }).eq("store_id", storeId);
-  return { customers: count ?? 0, companyRate: 1, customDomainRate: 0, repeatRate: 0, truncated: false };
+  if (!isDbConfigured()) return null;
+  return { customers: await countCompanies(storeId), companyRate: 1, customDomainRate: 0, repeatRate: 0, truncated: false };
 }
 
 function toProfile(storeId: string, r: Record<string, unknown>): StoreProfile {
@@ -41,22 +41,28 @@ function toProfile(storeId: string, r: Record<string, unknown>): StoreProfile {
   };
 }
 
+const STORE = "type::record('sys_store', $store)";
+
 export async function getStoreProfile(storeId: string): Promise<StoreProfile | null> {
-  if (!isSupabaseConfigured()) return null;
-  const { data, error } = await getSupabase()
-    .from("sys_store_profiles")
-    .select("*")
-    .eq("store_id", storeId)
-    .maybeSingle();
-  if (error) throw new Error(`DB read: ${error.message}`);
-  if (!data) return null;
-  return toProfile(storeId, data as Record<string, unknown>);
+  if (!isDbConfigured()) return null;
+  const rows = await surql<Array<Record<string, unknown>>>(
+    `SELECT * FROM sys_store_profile WHERE store = ${STORE}`,
+    { store: storeId },
+  );
+  return rows[0] ? toProfile(storeId, rows[0]) : null;
 }
 
+/** Crea o reemplaza el perfil (1:1 con la tienda, índice único sobre `store`). */
 export async function upsertStoreProfile(p: StoreProfile): Promise<void> {
-  const { error } = await getSupabase().from("sys_store_profiles").upsert(
+  await surql(
+    `UPSERT sys_store_profile SET store = ${STORE},
+       business_model = $business_model, vertical_detected = $vertical_detected,
+       taxonomy_id = $taxonomy_id, buyer_type = $buyer_type, industry = $industry,
+       catalog_type = $catalog_type, archetype = $archetype,
+       company_required = $company_required, description = $description
+     WHERE store = ${STORE}`,
     {
-      store_id: p.storeId,
+      store: p.storeId,
       business_model: p.businessModel,
       vertical_detected: p.verticalDetected,
       taxonomy_id: p.taxonomyId,
@@ -67,21 +73,13 @@ export async function upsertStoreProfile(p: StoreProfile): Promise<void> {
       company_required: p.companyRequired,
       description: p.description,
     },
-    { onConflict: "store_id" },
   );
-  if (error) throw new Error(`DB write: ${error.message}`);
 }
 
 /** Moneda de la tienda (universo monetario: nunca mezclar PEN con MXN). */
 export async function resolveShopCurrency(storeId: string): Promise<string | null> {
-  if (!isSupabaseConfigured()) return null;
-  const { data, error } = await getSupabase()
-    .from("sys_stores")
-    .select("shop_currency")
-    .eq("id", storeId)
-    .maybeSingle();
-  if (error) return null;
-  return (data?.shop_currency as string | null) ?? null;
+  if (!isDbConfigured()) return null;
+  return (await getStore(storeId))?.shop_currency ?? null;
 }
 
 /** Cortes de banda_p por tenant (issue #21 Paso 5).

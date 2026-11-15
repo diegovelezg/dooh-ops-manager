@@ -7,6 +7,7 @@ import { AttributeBadge } from "@/components/badges";
 import { Button } from "@/components/ui/button";
 import { RetryButton } from "@/components/buttons";
 import { formatDate } from "@/lib/format";
+import { useTz } from "@/components/tenant-time";
 
 interface Candidate {
   domain: string;
@@ -53,6 +54,7 @@ export function EmpresaResearch({ companyId, canResearch }: { companyId: string;
 
 /** Panel genérico de research por dominio(s) (ficha firmográfica en `domains`). */
 export function DomainResearchPanel({ researchBase, canResearch }: { researchBase: string; canResearch: boolean }) {
+  const tz = useTz();
   const [candidates, setCandidates] = useState<Candidate[] | null>(null);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [discovered, setDiscovered] = useState<string | null>(null);
@@ -237,7 +239,7 @@ export function DomainResearchPanel({ researchBase, canResearch }: { researchBas
                           <Globe className="size-3.5" aria-hidden /> {p.source_url}
                         </a>
                       ) : "—"}
-                      {p.enriched_at && <span className="ml-2 text-xs text-muted-foreground">· {formatDate(p.enriched_at)}</span>}
+                      {p.enriched_at && <span className="ml-2 text-xs text-muted-foreground">· {formatDate(p.enriched_at, tz)}</span>}
                     </dd>
                   </div>
                 </dl>

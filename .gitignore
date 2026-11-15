@@ -1,4 +1,4 @@
-# Raíz: no hay código compilable aquí (todo vive en web/ y supabase/,
+# Raíz: no hay código compilable aquí (todo vive en web/ y surreal/,
 # cada uno con su propio .gitignore). Esto es solo red de seguridad.
 .DS_Store
 *.log

@@ -1,0 +1,16 @@
+# SurrealDB local/dev. Datos persistentes en el volumen `surrealdb-data`.
+# Credenciales root solo para migraciones/bootstrap (scripts/db-*.ts); la app
+# usa el usuario de sistema `app_server` (ver surreal/README.md).
+name: dooh-ops-manager-surrealdb
+services:
+  surrealdb:
+    image: surrealdb/surrealdb:v4.0.1
+    restart: unless-stopped
+    command: start --user ${SURREAL_ROOT_USER:-root} --pass ${SURREAL_ROOT_PASS:?define SURREAL_ROOT_PASS} surrealkv://data/db
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - surrealdb-data:/data
+    user: root
+volumes:
+  surrealdb-data:

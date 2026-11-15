@@ -188,13 +188,13 @@ describe("muro de insights (issue #11)", () => {
     assert.equal(buildDrawerHref("/inbox", "q=om&order=old", "pantalla", "s-2"), "/inbox?q=om&pantalla=s-2");
   });
 
-  it("migración crea sys_insights + sys_insight_reads con RLS por tenant", () => {
-    const p = "supabase/migrations/20261209000000_brief_wall.sql";
+  it("la migración crea sys_insight + insight_read con permisos por tenant", () => {
+    const p = "surreal/migrations/0008_runs_insights_ai.surql";
     assert.ok(existsSync(join(ROOT, "..", p)), `falta migración ${p}`);
     const src = readRepo(p);
-    assert.ok(src.includes("sys_insights"), "sin tabla sys_insights");
-    assert.ok(src.includes("sys_insight_reads"), "sin tabla sys_insight_reads");
-    assert.ok(src.includes("is_store_member"), "sin RLS por tenant");
+    assert.ok(src.includes("DEFINE TABLE sys_insight "), "sin tabla sys_insight");
+    assert.ok(src.includes("DEFINE TABLE insight_read "), "sin arista insight_read");
+    assert.ok(src.includes("member_of<-user"), "sin permisos por tenant");
   });
 
   it("narrador único brief_narrate declarado (sin swarm)", () => {

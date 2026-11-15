@@ -2,7 +2,7 @@
 // investigator → (sector + analyst en paralelo) → synthesizer → critic.
 // No escribe perfiles: devuelve la propuesta final + gaps para el humano/chat.
 import { createProfilerLogger } from "./log";
-import { getSupabase } from "@/lib/supabase";
+import { getStoreProfile } from "@/lib/store-profiles";
 import { investigateBusiness } from "@/lib/ai/investigate";
 import { getVerticalProfile, researchVertical, saveVerticalProfile } from "@/lib/verticals";
 import { tenantStats } from "./analyst";
@@ -72,14 +72,10 @@ export async function runProfiler(
 
   // NOTA: icp_description se extirpó en 20261122; se usa `description`
   // (columna viva) como contexto persistido del negocio, o null.
-  const [sectorCached, stats, descRes] = await Promise.all([
+  const [sectorCached, stats, profile] = await Promise.all([
     getVerticalProfile(investigator.taxonomyId, investigator.vertical ?? description.slice(0, 80)),
     tenantStats(storeId),
-    getSupabase()
-      .from("sys_store_profiles")
-      .select("description")
-      .eq("store_id", storeId)
-      .maybeSingle(),
+    getStoreProfile(storeId),
   ]);
   let sectorBrief = sectorCached?.brief ?? null;
   let sectorFromCache = !!sectorCached;
@@ -98,10 +94,7 @@ export async function runProfiler(
       log(`pipeline sector sin brief (${e instanceof Error ? e.message : e}); se sigue sin prior`);
     }
   }
-  const icp =
-    (descRes.data as { description?: unknown } | null)?.description != null
-      ? String((descRes.data as { description?: unknown }).description)
-      : null;
+  const icp = profile?.description ?? null;
   log(`pipeline stats buyers=${stats.buyers}/${stats.customers} ticket=${stats.ticketMedian} gaps->synthesize`);
   onStage?.({ done: 2, label: "Datos y sector cruzados" });
 
