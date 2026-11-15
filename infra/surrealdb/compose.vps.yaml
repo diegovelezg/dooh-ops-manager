@@ -1,0 +1,20 @@
+# SurrealDB en VPS (mismo patrón que los otros proyectos). Uso:
+#   SURREAL_ROOT_PASS=... docker compose -f compose.vps.yaml up -d
+services:
+  surrealdb:
+    image: surrealdb/surrealdb:v4.0.1
+    restart: unless-stopped
+    user: root
+    command: start --log info --user root --pass ${SURREAL_ROOT_PASS:?define SURREAL_ROOT_PASS} rocksdb:/data/dooh.db
+    mem_limit: 1536m
+    environment:
+      - SURREAL_SURREALKV_BLOCK_CACHE_CAPACITY=268435456
+      - SURREAL_ROCKSDB_BLOCK_CACHE_SIZE=268435456
+      - SURREAL_MEMORY_THRESHOLD=805306368
+    ports:
+      - "127.0.0.1:8000:8000"   # solo local; la app lo alcanza por localhost (o por la red de compose)
+    volumes:
+      - surreal-data:/data
+
+volumes:
+  surreal-data:
