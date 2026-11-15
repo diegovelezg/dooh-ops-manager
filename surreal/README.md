@@ -33,3 +33,15 @@ USER_PASSWORD=<pass> npm run db:user -- --email=a@b.c --store=<id> --role=owner
   leerlos (`withOrderDays`). Solo son `yyyy-mm-dd` los campos que son fechas de calendario sin hora (emisión/vencimiento
   de factura, fecha de cobro, deadline de material, campaña). Cambiar la zona se bloquea (EVENT) si la tienda ya tiene
   órdenes o reservas. Los clientes leen la zona con `useTz()` (`components/tenant-time.tsx`).
+
+## Despliegue en VPS (Coolify)
+1. Servicio con `infra/surrealdb/compose.vps.yaml`; define `SURREAL_ROOT_PASS` en sus variables. El puerto
+   publicado (18101) queda abierto en el host: restríngelo con firewall.
+2. Desde `web/`, con un `.env.vps.local` (ignorado por git; `SURREAL_URL`, `SURREAL_NS=dooh`, `SURREAL_DB=ops`,
+   `SURREAL_ROOT_USER/PASS`, `SURREAL_APP_USER=app_server`, `SURREAL_APP_PASSWORD`):
+   `npx tsx --env-file=.env.vps.local scripts/db-migrate.ts`.
+3. Copiar datos entre instancias (solo registros; el esquema y `app_server` los crea la migración):
+   `surreal export --only --records true --tables-exclude _migration - > datos.surql` en el origen y
+   `surreal import` en el destino. El archivo lleva datos de negocio y hashes: no se commitea.
+4. La app en Coolify debe construirse desde la rama `surrealdb` con `SURREAL_URL` alcanzable desde su contenedor
+   (no `127.0.0.1`), `SURREAL_APP_USER/PASSWORD` y `SECRETS_ENCRYPTION_KEY`.
