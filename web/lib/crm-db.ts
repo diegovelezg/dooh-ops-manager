@@ -138,12 +138,16 @@ export async function listCrmCompanies(
   const result = await surql<{ total: number; rows: Array<Record<string, unknown>> }>(
     `LET $tokens = fn::tokens($q);
      LET $qn = fn::norm($q);
+     -- Conteo agregado una vez (GROUP BY) y buscado por clave: la subconsulta correlacionada
+     -- (\`WHERE company = $parent.id\`) no usa índice y escaneaba crm_contact por cada empresa.
+     LET $cc = SELECT company, count() AS n FROM crm_contact
+       WHERE store = type::record('sys_store', $store) AND deleted_at = NONE AND company != NONE GROUP BY company;
+     LET $cm = object::from_entries($cc.map(|$x| [<string> $x.company, $x.n]));
      LET $m = SELECT ${COMPANY_COLS},
          fn::norm(name) AS name_key,
          tax_id = NONE AS tax_missing,
          fn::norm(tax_id) AS tax_key,
-         (SELECT VALUE count() FROM crm_contact
-            WHERE store = $parent.store AND company = $parent.id AND deleted_at = NONE GROUP ALL)[0] ?? 0 AS contacts_count,
+         $cm[<string> id] ?? 0 AS contacts_count,
          fn::match_score(fn::norm(name), search, $qn) AS score
        FROM crm_company
        WHERE store = type::record('sys_store', $store) AND kind != NONE
@@ -279,10 +283,13 @@ export interface AgencyTeamContact {
   is_primary: boolean;
 }
 
+/** Tope por lista del cajón de empresa; si se alcanza se declara (`truncated`), nunca en silencio. */
+const DETAIL_CAP = 500;
+
 export async function getCrmCompany(
   storeId: string,
   companyId: string,
-): Promise<{ company: Record<string, unknown>; contacts: CrmContact[]; campaigns: CrmCampaign[]; ios: Array<{ id: string; io_number: string; brand: string | null; status: string; advertiser_company_id: string | null; billing_company_id: string | null; gross_minor: number; currency: string }>; network: CompanyNetwork; contact_accounts: ContactAccount[]; incoming_accounts: IncomingAccount[]; agency_team: AgencyTeamContact[] } | null> {
+): Promise<{ company: Record<string, unknown>; /** Alguna lista del cajón (vínculos, cuentas, órdenes, equipo) pasó el tope de {@link DETAIL_CAP}. */ truncated: boolean; contacts: CrmContact[]; campaigns: CrmCampaign[]; ios: Array<{ id: string; io_number: string; brand: string | null; status: string; advertiser_company_id: string | null; billing_company_id: string | null; gross_minor: number; currency: string }>; network: CompanyNetwork; contact_accounts: ContactAccount[]; incoming_accounts: IncomingAccount[]; agency_team: AgencyTeamContact[] } | null> {
   const [company] = await surql<Array<Record<string, unknown>>>(
     `SELECT ${COMPANY_COLS} FROM crm_company
      WHERE store = type::record('sys_store', $store) AND id = type::record('crm_company', $id)`,
@@ -302,29 +309,35 @@ export async function getCrmCompany(
       `SELECT record::id(in) AS agency_company_id, record::id(out) AS advertiser_company_id, origin
        FROM crm_company_link
        WHERE store = type::record('sys_store', $store)
-         AND (in = type::record('crm_company', $id) OR out = type::record('crm_company', $id)) LIMIT 500`,
+         AND (in = type::record('crm_company', $id) OR out = type::record('crm_company', $id)) LIMIT ${DETAIL_CAP + 1}`,
       sc,
     ),
     // Cuentas que atiende cada contacto de esta empresa (solo agencias declaran).
     surql<Array<Record<string, unknown>>>(
-      `SELECT record::id(in) AS contact_id, record::id(out) AS advertiser_company_id FROM crm_contact_account
-       WHERE store = type::record('sys_store', $store) AND in.company = type::record('crm_company', $id) LIMIT 500`,
+      // Contactos de la empresa primero (indexado) y `in IN $k`: `in.company = …` recorría todas las
+      // aristas trayendo el contacto de cada una (557 ms vs 5 ms con 30 000 aristas).
+      `LET $k = SELECT VALUE id FROM crm_contact WHERE store = type::record('sys_store', $store) AND company = type::record('crm_company', $id);
+       SELECT record::id(in) AS contact_id, record::id(out) AS advertiser_company_id FROM crm_contact_account
+       WHERE store = type::record('sys_store', $store) AND in IN $k LIMIT ${DETAIL_CAP + 1}`,
       sc,
     ),
     // Vista anunciante: contactos de agencia que atienden a esta empresa.
     surql<Array<Record<string, unknown>>>(
       `SELECT record::id(in) AS contact_id, record::id(in.company) AS agency_company_id FROM crm_contact_account
-       WHERE store = type::record('sys_store', $store) AND out = type::record('crm_company', $id) LIMIT 500`,
+       WHERE store = type::record('sys_store', $store) AND out = type::record('crm_company', $id) LIMIT ${DETAIL_CAP + 1}`,
       sc,
     ),
     listCampaignsOfAdvertiser(storeId, companyId, 50),
     // Historial para la red comercial (drawer Vínculos): hasta 500 IOs donde
     // participa (como anunciante o facturación). La marca es metadato del
     // pedido (io_orders.brand), la contraparte se resuelve abajo.
-    selectOrders(storeId, { companyId, order: "created_desc", limit: 500 }),
+    selectOrders(storeId, { companyId, order: "created_desc", limit: DETAIL_CAP + 1 }),
   ]);
-  const linksAll = links;
-  const iosRows = iosAll.map((o) => ({
+  // Se pide un registro de más para saber si hubo corte; el resto se descarta.
+  const cap = <T,>(rows: T[]): T[] => rows.slice(0, DETAIL_CAP);
+  let truncated = [links, accountsAll, incomingAll, iosAll].some((r) => r.length > DETAIL_CAP);
+  const linksAll = cap(links);
+  const iosRows = cap(iosAll).map((o) => ({
     id: String(o.id),
     io_number: String(o.io_number ?? ""),
     brand: (o.brand as string | null) ?? null,
@@ -392,8 +405,9 @@ export async function getCrmCompany(
   const nameBy = new Map<string, { name: string; kind: CompanyKind | null }>();
   if (counterpartIds.length > 0) {
     const counterparties = await surql<Array<Record<string, unknown>>>(
-      `SELECT record::id(id) AS id, name, kind FROM crm_company
-       WHERE store = type::record('sys_store', $store) AND id IN ${recs("crm_company", "$ids")}`,
+      `LET $r = ${recs("crm_company", "$ids")};
+       SELECT record::id(id) AS id, name, kind FROM crm_company
+       WHERE store = type::record('sys_store', $store) AND id IN $r`,
       { store: storeId, ids: counterpartIds },
     );
     for (const c of counterparties) {
@@ -425,10 +439,10 @@ export async function getCrmCompany(
   };
   // Ficha: solo las 50 recientes (comportamiento previo intacto).
   const ios = iosWithTotals.slice(0, 50);
-  const contact_accounts: ContactAccount[] = accountsAll
+  const contact_accounts: ContactAccount[] = cap(accountsAll)
     .filter((a) => typeof a.contact_id === "string" && typeof a.advertiser_company_id === "string")
     .map((a) => ({ contact_id: String(a.contact_id), advertiser_company_id: String(a.advertiser_company_id) }));
-  const incoming_accounts: IncomingAccount[] = incomingAll
+  const incoming_accounts: IncomingAccount[] = cap(incomingAll)
     .filter((a) => typeof a.contact_id === "string" && typeof a.agency_company_id === "string")
     .map((a) => ({ contact_id: String(a.contact_id), agency_company_id: String(a.agency_company_id) }));
   // Vista anunciante: equipo de las agencias vinculadas para gestionar
@@ -442,13 +456,15 @@ export async function getCrmCompany(
     ])];
     if (linkedAgencyIds.length > 0) {
       const team = await surql<Array<Record<string, unknown>>>(
-        `SELECT ${CONTACT_COLS} FROM crm_contact
+        `LET $r = ${recs("crm_company", "$ids")};
+         SELECT ${CONTACT_COLS} FROM crm_contact
          WHERE store = type::record('sys_store', $store) AND deleted_at = NONE
-           AND company IN ${recs("crm_company", "$ids")}
-         ORDER BY created_at ASC LIMIT 500`,
+           AND company IN $r
+         ORDER BY created_at ASC LIMIT ${DETAIL_CAP + 1}`,
         { store: storeId, ids: linkedAgencyIds },
       );
-      agency_team = team
+      if (team.length > DETAIL_CAP) truncated = true;
+      agency_team = cap(team)
         .filter((c) => typeof c.id === "string" && typeof c.company_id === "string")
         .map((c) => ({
           id: String(c.id),
@@ -464,6 +480,7 @@ export async function getCrmCompany(
   }
   return {
     company,
+    truncated,
     contacts: contacts.map(toContact),
     campaigns: campaigns.map((m) => ({
       id: String(m.id),

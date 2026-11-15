@@ -38,6 +38,26 @@ after(async () => {
   await t?.drop();
 });
 
+describe("listado completo", () => {
+  it("listOrderRows no topa en 200: las órdenes antiguas siguen visibles", async () => {
+    const store = "store-many";
+    await q(`CREATE sys_store:⟨${store}⟩ SET name='Many', io_prefix='MN'; FOR $i IN 0..205 { CREATE io_order SET store = sys_store:⟨${store}⟩, number = string::concat('MN-2027-', <string> $i), brand = 'M', currency = 'PEN', payment_terms_days = 30, starts_at = <datetime> '2027-01-01T05:00:00Z', ends_at = <datetime> '2027-01-02T05:00:00Z'; };`);
+    assert.equal((await o.listOrderRows(store)).length, 205);
+  });
+  it("cajón de empresa: declara `truncated` solo al pasar el tope de 500 órdenes", async () => {
+    const crm = await import("../lib/crm-db");
+    const store = "store-cap";
+    await q(`CREATE sys_store:⟨${store}⟩ SET name='Cap', io_prefix='CP'; CREATE crm_company:⟨adv⟩ SET store = sys_store:⟨${store}⟩, name = 'Adv', kind = 'anunciante';`);
+    const mk = (from: number, to: number) => q(`FOR $i IN ${from}..${to} { CREATE io_order SET store = sys_store:⟨${store}⟩, number = string::concat('CP-2027-', <string> $i), brand = 'M', currency = 'PEN', payment_terms_days = 30, advertiser = crm_company:⟨adv⟩, starts_at = <datetime> '2027-01-01T05:00:00Z', ends_at = <datetime> '2027-01-02T05:00:00Z'; };`);
+    await mk(0, 500);
+    const exact = await crm.getCrmCompany(store, "adv");
+    assert.equal(exact?.truncated, false);
+    await mk(500, 501);
+    const over = await crm.getCrmCompany(store, "adv");
+    assert.equal(over?.truncated, true);
+  });
+});
+
 describe("numeración", () => {
   it("correlativa por tienda y año con el prefijo de la tienda", async () => {
     const s = await newScreen("num");
@@ -195,6 +215,28 @@ describe("facturas y cobros", () => {
     const inv1 = (await o.selectInvoices(A, 50)).find((r) => r.id === id);
     const voided = (inv1?.payments as Array<Record<string, unknown>>).find((p) => p.id === "p2");
     assert.ok(voided?.voided_at && voided.void_reason === "error de captura");
+  });
+
+  it("lecturas en lote: cobros agrupados por factura y paid_minor sin los revertidos", async () => {
+    const a = await invoice(1000);
+    const b = await invoice(800);
+    const c = await invoice(300);
+    await pay(a, "lote-a1", 100);
+    await pay(a, "lote-a2", 200);
+    await pay(a, "lote-a3", 50);
+    await pay(b, "lote-b1", 800);
+    await o.voidInvoicePayment(a, "lote-a2", "error", "t");
+    for (const rows of [await o.selectInvoices(A), (await o.listChildrenOf(A, [order])).invoices]) {
+      const by = new Map(rows.map((r) => [String(r.id), r]));
+      const ids = (id: string) => (by.get(id)?.payments as Array<Record<string, unknown>>).map((p) => p.id);
+      assert.deepEqual(ids(a), ["lote-a1", "lote-a2", "lote-a3"]);
+      assert.equal(by.get(a)?.paid_minor, 150);
+      assert.deepEqual(ids(b), ["lote-b1"]);
+      assert.equal(by.get(b)?.paid_minor, 800);
+      assert.deepEqual(ids(c), []);
+      assert.equal(by.get(c)?.paid_minor, 0);
+      assert.equal(by.get(a)?.paid_minor, (await paid(a)).paid_minor); // = campo COMPUTED
+    }
   });
 
   it("idempotente por requestId; mismo id con otros datos se rechaza", async () => {

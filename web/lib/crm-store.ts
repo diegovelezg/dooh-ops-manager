@@ -24,7 +24,8 @@ export async function getCompany(storeId: string, id: string): Promise<Row | nul
 export async function getCompaniesById(storeId: string, ids: string[]): Promise<Map<string, Row>> {
   if (ids.length === 0) return new Map();
   const rows = await surql<Row[]>(
-    `SELECT ${COMPANY_COLS} FROM crm_company WHERE store = ${S} AND id IN ${recs("crm_company", "$ids")}`,
+    `LET $r = ${recs("crm_company", "$ids")};
+     SELECT ${COMPANY_COLS} FROM crm_company WHERE store = ${S} AND id IN $r`,
     { store: storeId, ids },
   );
   return new Map(rows.map((r) => [String(r.id), r]));
@@ -67,7 +68,8 @@ export async function getContact(storeId: string, id: string): Promise<Row | nul
 export async function getContactsById(storeId: string, ids: string[]): Promise<Map<string, Row>> {
   if (ids.length === 0) return new Map();
   const rows = await surql<Row[]>(
-    `SELECT ${CONTACT_COLS} FROM crm_contact WHERE store = ${S} AND id IN ${recs("crm_contact", "$ids")}`,
+    `LET $r = ${recs("crm_contact", "$ids")};
+     SELECT ${CONTACT_COLS} FROM crm_contact WHERE store = ${S} AND id IN $r`,
     { store: storeId, ids },
   );
   return new Map(rows.map((r) => [String(r.id), r]));
@@ -152,8 +154,9 @@ export async function deleteLinkAndAccounts(storeId: string, agencyId: string, a
 export async function linkedAdvertisers(storeId: string, agencyId: string, advertiserIds: string[]): Promise<Set<string>> {
   if (advertiserIds.length === 0) return new Set();
   const rows = await surql<string[]>(
-    `SELECT VALUE record::id(out) FROM crm_company_link
-     WHERE store = ${S} AND in = type::record('crm_company', $a) AND out IN ${recs("crm_company", "$ids")}`,
+    `LET $r = ${recs("crm_company", "$ids")};
+     SELECT VALUE record::id(out) FROM crm_company_link
+     WHERE store = ${S} AND in = type::record('crm_company', $a) AND out IN $r`,
     { store: storeId, a: agencyId, ids: advertiserIds },
   );
   return new Set(rows);
@@ -226,7 +229,8 @@ export async function mergeContacts(storeId: string, survivorId: string, loserId
 export async function listCompanies(storeId: string, ids?: string[]): Promise<Row[]> {
   if (ids && ids.length === 0) return [];
   return surql<Row[]>(
-    `SELECT ${COMPANY_COLS} FROM crm_company WHERE store = ${S}${ids ? ` AND id IN ${recs("crm_company", "$ids")}` : ""}`,
+    `${ids ? `LET $r = ${recs("crm_company", "$ids")};` : ""}
+     SELECT ${COMPANY_COLS} FROM crm_company WHERE store = ${S}${ids ? " AND id IN $r" : ""}`,
     { store: storeId, ids },
   );
 }
@@ -239,7 +243,8 @@ export async function countCompanies(storeId: string): Promise<number> {
 export async function listContactsWithCompany(storeId: string, ids: string[]): Promise<Row[]> {
   if (ids.length === 0) return [];
   return surql<Row[]>(
-    `SELECT ${CONTACT_COLS}, company.name AS company_name FROM crm_contact WHERE store = ${S} AND id IN ${recs("crm_contact", "$ids")}`,
+    `LET $r = ${recs("crm_contact", "$ids")};
+     SELECT ${CONTACT_COLS}, company.name AS company_name FROM crm_contact WHERE store = ${S} AND id IN $r`,
     { store: storeId, ids },
   );
 }
@@ -284,8 +289,9 @@ export async function listAgencies(storeId: string, limit: number): Promise<Row[
 export async function listContactsOfCompanies(storeId: string, companyIds: string[], limit: number): Promise<Row[]> {
   if (companyIds.length === 0) return [];
   return surql<Row[]>(
-    `SELECT ${CONTACT_COLS}, company.name AS company_name FROM crm_contact
-     WHERE store = ${S} AND company IN ${recs("crm_company", "$ids")}
+    `LET $r = ${recs("crm_company", "$ids")};
+     SELECT ${CONTACT_COLS}, company.name AS company_name FROM crm_contact
+     WHERE store = ${S} AND company IN $r
      ORDER BY is_primary DESC, created_at ASC LIMIT $limit`,
     { store: storeId, ids: companyIds, limit },
   );
@@ -298,8 +304,9 @@ export async function listAccountsOfContacts(
 ): Promise<Array<{ contact_id: string; advertiser_company_id: string; advertiser_name: string }>> {
   if (contactIds.length === 0) return [];
   const rows = await surql<Array<{ contact_id: string; advertiser_company_id: string; advertiser_name: string | null }>>(
-    `SELECT record::id(in) AS contact_id, record::id(out) AS advertiser_company_id, out.name AS advertiser_name
-     FROM crm_contact_account WHERE store = ${S} AND in IN ${recs("crm_contact", "$ids")} LIMIT 500`,
+    `LET $r = ${recs("crm_contact", "$ids")};
+     SELECT record::id(in) AS contact_id, record::id(out) AS advertiser_company_id, out.name AS advertiser_name
+     FROM crm_contact_account WHERE store = ${S} AND in IN $r LIMIT 500`,
     { store: storeId, ids: contactIds },
   );
   return rows.map((r) => ({ ...r, advertiser_name: r.advertiser_name ?? "—" }));

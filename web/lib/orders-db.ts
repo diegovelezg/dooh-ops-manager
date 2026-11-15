@@ -43,7 +43,7 @@ export async function listOrders(
   storeId: string,
   opts: { q?: string; stage?: OrderStageKey | null; billing?: BillingStatusKey | null } = {},
 ): Promise<OrderRow[]> {
-  const allRows = await listOrderRows(storeId, 200);
+  const allRows = await listOrderRows(storeId);
   if (allRows.length === 0) return [];
 
   // Nombres primero: el filtro fuzzy cruza IO + marca + anunciante + facturación.

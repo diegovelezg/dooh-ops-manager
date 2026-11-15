@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useTransition } from "react";
+import { useCallback, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Radio, TriangleAlert, Camera, Wallet } from "lucide-react";
 import { AppCard } from "@/components/app-card";
 import { SectionHeading } from "@/components/section-heading";
 import { Metric, MetricRow } from "@/components/metric";
 import { ClearFiltersButton } from "@/components/buttons";
+import { Button } from "@/components/ui/button";
 import {
   DataTable,
   DataTableBody,
@@ -37,6 +38,8 @@ function fmtCorto(v: string | null): string {
 }
 
 const BILLINGS: BillingStatusKey[] = ["sin_facturar", "facturado", "parcial", "pagado", "vencido"];
+/** Filas pintadas por tramo: el resumen y el conteo cubren TODAS las órdenes; el DOM crece de a tramos. */
+const PAGE_ROWS = 100;
 
 export function OrdersList({
   rows,
@@ -61,6 +64,8 @@ export function OrdersList({
     ["orden"],
   );
   const router = useRouter();
+  // Se reinicia al cambiar los filtros: la página remonta este componente con `key` (ver page.tsx).
+  const [visible, setVisible] = useState(PAGE_ROWS);
   const [isPending, startTransition] = useTransition();
   // Prefetch del detalle al hover/foco: calienta la compilación de la ruta
   // + DB antes de abrir (el drawer usa no-store, esto no sustituye su fetch;
@@ -193,7 +198,7 @@ export function OrdersList({
             <DataTableTh>Cobro</DataTableTh>
           </DataTableHeader>
           <DataTableBody>
-            {rows.map((o) => (
+            {rows.slice(0, visible).map((o) => (
               <DataTableRow
                 key={o.id}
                 tabIndex={0}
@@ -266,6 +271,14 @@ export function OrdersList({
           </DataTableBody>
         </DataTable>
       </AppCard>
+      {rows.length > visible && (
+        <div className="flex items-center justify-center gap-3 text-sm text-muted-foreground">
+          <span>Mostrando {formatNumber(visible)} de {formatNumber(rows.length)}</span>
+          <Button type="button" variant="outline" size="sm" onClick={() => setVisible((n) => n + PAGE_ROWS)}>
+            Mostrar más
+          </Button>
+        </div>
+      )}
 
       {selectedId && <OrdenDrawer key={selectedId} orderId={selectedId} myRole={myRole} onClose={closeDrawer} />}
     </div>

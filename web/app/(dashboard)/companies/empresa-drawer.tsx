@@ -111,6 +111,7 @@ interface EmpresaDetail {
   incoming_accounts?: Array<{ contact_id: string; agency_company_id: string }>;
   agency_team?: Array<{ id: string; agency_company_id: string; first_name: string | null; last_name: string | null; email: string | null; phone: string | null; job_title: string | null; is_primary: boolean }>;
   myRole?: MemberRole | null;
+  truncated?: boolean;
 }
 
 type TabId = "ficha" | "perfil" | "contactos" | "pedidos" | "vinculos" | "agentes";
@@ -629,6 +630,11 @@ export function EmpresaDrawer({
 
       {detail && tab === "vinculos" && !isProvider && (
         <>
+          {detail.truncated && (
+            <p role="status" className="rounded-lg bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+              Esta empresa supera 500 registros en alguna lista: los vínculos y totales mostrados son parciales.
+            </p>
+          )}
           <AppCard
             title={`Marcas (${network?.brands.length ?? 0})`}
             tone="emerald"

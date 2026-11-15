@@ -69,7 +69,7 @@ export default async function OrdenesPage({
       {error && <AppCardState>{error}</AppCardState>}
 
       {connected && dbReady && !error && (
-        <OrdersList rows={rows} q={q} stage={stage} billing={billing} initialSelectedId={selectedId} myRole={myRole} />
+        <OrdersList key={`${q}|${stage ?? ""}|${billing ?? ""}`} rows={rows} q={q} stage={stage} billing={billing} initialSelectedId={selectedId} myRole={myRole} />
       )}
     </div>
   );

@@ -11,7 +11,7 @@ import { apiLog } from "@/lib/log";
 // de cada vista (q, tipo, company, stage, billing, proveedor, ciudad, estado,
 // sort, dir, store).
 // Exporta lo filtrado (empresas/pantallas paginan en bucle hasta 2000).
-// Contactos topa en 200 y órdenes en 200 (límite de sus lecturas): si se
+// Contactos topa en 200 (límite de su lectura): si se
 // alcanza, se declara con `X-Export-Truncated: 1`, nunca silencioso.
 // CSV RFC4180 con coma + BOM para Excel/Sheets.
 export async function GET(req: Request) {
@@ -117,8 +117,6 @@ export async function GET(req: Request) {
       stage: stage as ListOpts["stage"],
       billing: billing as ListOpts["billing"],
     });
-    // listOrders topa en 200 (volumen bajo, sin paginación exacta que mentir).
-    const ordersTruncated = list.length >= 200;
     const rows = list.map((o) => [
       o.io_number,
       o.brand ?? "",
@@ -140,7 +138,6 @@ export async function GET(req: Request) {
       `ordenes-${stamp}.csv`,
       ["orden", "marca", "estado", "etapa", "cobro", "anunciante", "facturacion", "inicio", "fin", "lineas", "bruto_mayor", "facturado_mayor", "pagado_mayor", "pendiente_mayor", "moneda"],
       rows,
-      { truncated: ordersTruncated },
     );
     }
 

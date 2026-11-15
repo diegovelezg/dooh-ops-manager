@@ -18,8 +18,9 @@ export async function listInsights(storeId: string, limit: number): Promise<Row[
 export async function readInsightIds(userId: string, ids: string[]): Promise<Set<string>> {
   if (ids.length === 0) return new Set();
   const rows = await surql<string[]>(
-    `SELECT VALUE record::id(out) FROM insight_read
-     WHERE in = type::record('user', $user) AND out IN $ids.map(|$i| type::record('sys_insight', $i))`,
+    `LET $r = $ids.map(|$i| type::record('sys_insight', $i));
+     SELECT VALUE record::id(out) FROM insight_read
+     WHERE in = type::record('user', $user) AND out IN $r`,
     { user: userId, ids },
   );
   return new Set(rows);

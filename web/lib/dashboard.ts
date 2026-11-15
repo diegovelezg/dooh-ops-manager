@@ -105,6 +105,18 @@ function dayNumOf(v: unknown): number | null {
   return d ? isoDayToNum(d) : null;
 }
 
+/** Agrupa por orden en un solo recorrido (evita `filter` por orden: O(órdenes × filas)). */
+function groupByIo<T extends Record<string, unknown>>(rows: T[]): Map<string, T[]> {
+  const m = new Map<string, T[]>();
+  for (const r of rows) {
+    const k = String(r.io_id);
+    const list = m.get(k);
+    if (list) list.push(r);
+    else m.set(k, [r]);
+  }
+  return m;
+}
+
 export async function getDashboardSnapshot(storeId: string): Promise<DashboardSnapshot> {
   const now = Date.now();
   // Todo el tablero opera en días del TENANT (`sys_store.timezone`), igual que la capacidad y las líneas
@@ -176,10 +188,11 @@ export async function getDashboardSnapshot(storeId: string): Promise<DashboardSn
       ends_ms: parseMs(l.ends_at),
     }));
     const workflow = await workflowRows(storeId, oiIds);
+    const linesOf = groupByIo(lines), omsOf = groupByIo(oms), creasOf = groupByIo(creas);
     for (const o of oiRows) {
-      const ownLines = lines.filter(l => l.io_id === o.id);
-      if (isAuthorized(o, oms.filter(d => d.io_id === o.id))) omBy.add(o.id);
-      const ready = materialsCovered(ownLines, creas.filter(c => c.io_id === o.id)) && ownLines.every(l => supplierConfirmed(l, workflow.purchases));
+      const ownLines = linesOf.get(o.id) ?? [];
+      if (isAuthorized(o, omsOf.get(o.id) ?? [])) omBy.add(o.id);
+      const ready = materialsCovered(ownLines, creasOf.get(o.id) ?? []) && ownLines.every(l => supplierConfirmed(l, workflow.purchases));
       creaBy.set(o.id, { any: ready, pending: !ready });
       if (deliveriesCovered(ownLines, workflow.deliveries, photos)) photoBy.add(o.id);
     }
@@ -327,13 +340,15 @@ export async function getDashboardSnapshot(storeId: string): Promise<DashboardSn
   const stageAt = (o: (typeof oiRows)[number], ref: number) => orderStage({
     status: o.status, signed: o.status === "signed", hasOm: omBy.has(o.id),
     materialsOk: materialsOk(o.id), certified: photoBy.has(o.id),
-    ...orderTiming(o, lineRows.filter((l) => l.io_id === o.id), ref, tz),
+    ...orderTiming(o, lineRowsOf.get(o.id) ?? [], ref, tz),
   }).stage;
+  const lineRowsOf = groupByIo(lineRows);
   const alAireAt = (ref: number): typeof oiRows => oiRows.filter((o) => stageAt(o, ref) === "al_aire");
   const alAireOis = alAireAt(now);
   const prevAlAireOis = alAireAt(now - DAY_MS).length;
+  const alAireIds = new Set(alAireOis.map((o) => o.id));
   const alAireScreens = new Set(lineRows.filter((l) =>
-    alAireOis.some((o) => o.id === l.io_id) && l.starts_ms !== null && l.ends_ms !== null
+    alAireIds.has(l.io_id) && l.starts_ms !== null && l.ends_ms !== null
     && l.starts_ms <= now && now < l.ends_ms,
   ).map((l) => l.screen_id));
   const porCertificar = oiRows.filter((o) => stageAt(o, now) === "por_certificar").length;
@@ -391,7 +406,7 @@ export async function getDashboardSnapshot(storeId: string): Promise<DashboardSn
         endsAt: o.ends_at,
       });
     }
-    const ended = orderTiming(o, lineRows.filter((l) => l.io_id === o.id), now, tz).ended;
+    const ended = orderTiming(o, lineRowsOf.get(o.id) ?? [], now, tz).ended;
     if (o.status === "signed" && !materialsOk(o.id) && !ended && du !== null && du <= 5) {
       alerts.push({
         kind: "material",
@@ -407,7 +422,7 @@ export async function getDashboardSnapshot(storeId: string): Promise<DashboardSn
         endsAt: o.ends_at,
       });
     }
-    const alAire = alAireOis.some((a) => a.id === o.id);
+    const alAire = alAireIds.has(o.id);
     if (alAire && !photoBy.has(o.id) && ds !== null && ds >= 3) {
       alerts.push({
         kind: "sin_evidencia",

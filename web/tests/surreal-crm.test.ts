@@ -185,6 +185,20 @@ describe("búsqueda tolerante", () => {
     assert.equal((await db.listCrmCompanies(A, { kinds: [] })).total, 0);
     assert.equal((await db.listCrmCompanies(A, { status: "archived" })).total, 0);
   });
+  it("contacts_count cuenta solo contactos activos de CADA empresa (agregado, no por fila)", async () => {
+    const full = await company(A, "ConteoLleno SA", "agencia");
+    const gone = await company(A, "ConteoArchivado SA", "agencia");
+    const empty = await company(A, "ConteoVacio SA", "agencia");
+    await store.createContact(A, { company_id: full, first_name: "Uno", phone: "11" }, null);
+    await store.createContact(A, { company_id: full, first_name: "Dos", phone: "12" }, null);
+    await store.createContact(A, { company_id: gone, first_name: "Baja", phone: "13" }, null);
+    const [baja] = (await db.listCrmContacts(A, { companyId: gone })).rows;
+    await store.setArchived("crm_contact", A, baja.id, true, "t");
+    const count = async (id: string) => (await db.listCrmCompanies(A, { q: "Conteo", sortKey: "contacts" })).rows.find((r) => r.id === id)?.contacts_count;
+    assert.equal(await count(full), 2);
+    assert.equal(await count(gone), 0);
+    assert.equal(await count(empty), 0);
+  });
   it("contactos: el texto encuentra por nombre de empresa y el total sin texto es exacto", async () => {
     const byCompany = await db.listCrmContacts(A, { q: "fusion" });
     assert.ok(byCompany.rows.length >= 1);

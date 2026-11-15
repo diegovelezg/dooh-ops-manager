@@ -28,6 +28,43 @@ export const LINE_COLS = `record::id(id) AS id, record::id(store) AS store_id, r
   fn::key(screen.supplier) AS supplier_company_id, screen.ownership AS ownership,
   screen.width_px AS screen_width_px, screen.height_px AS screen_height_px, screen.duration_sec AS screen_duration_sec`;
 
+const LINE_BASE = `record::id(id) AS id, record::id(store) AS store_id, record::id(order) AS io_id,
+  record::id(screen) AS screen_id, fn::key(slot) AS slot_id, fn::iso(starts_at) AS starts_at, fn::iso(ends_at) AS ends_at,
+  rate_minor, tarifa_regular_minor, cant_meses, cant_dias, cant_slots, notes`;
+
+/**
+ * Líneas de VARIAS órdenes con los datos de su pantalla, mismas columnas que LINE_COLS. Cada
+ * `screen.campo` de LINE_COLS recupera la pantalla otra vez por línea (5 s con 20 000 líneas);
+ * aquí las pantallas distintas se leen UNA vez (indexado por id) y se unen en JS (0,5 s).
+ * `pre` = sentencias LET previas; `where` ya incluye el filtro de tienda.
+ */
+async function readLines(where: string, vars: Record<string, unknown>, pre = ""): Promise<Row[]> {
+  const { lines, screens } = await surql<{ lines: Array<Row & { screen_key?: string }>; screens: Row[] }>(
+    `${pre}
+     LET $ln = SELECT ${LINE_BASE}, fn::key(screen) AS screen_key FROM io_line WHERE ${where};
+     LET $sids = array::distinct($ln.map(|$l| type::record('inv_screen', $l.screen_key)));
+     RETURN {
+       lines: $ln,
+       screens: SELECT record::id(id) AS screen_key, name, ownership, IF supplier { record::id(supplier) } ELSE { NONE } AS supplier, width_px, height_px, duration_sec
+         FROM inv_screen WHERE id IN $sids
+     };`,
+    vars,
+  );
+  const byKey = new Map(screens.map((sc) => [String(sc.screen_key), sc]));
+  return lines.map(({ screen_key, ...l }) => {
+    const sc = byKey.get(String(screen_key));
+    return {
+      ...l,
+      screen_name: sc?.name,
+      supplier_company_id: sc?.supplier,
+      ownership: sc?.ownership,
+      screen_width_px: sc?.width_px,
+      screen_height_px: sc?.height_px,
+      screen_duration_sec: sc?.duration_sec,
+    };
+  });
+}
+
 const AGENCY_ORDER_COLS = `record::id(id) AS id, record::id(store) AS store_id, record::id(order) AS io_id, kind, code,
   portal, issued_at, document_url, notes, created_by, agreement_revision`;
 const CREATIVE_COLS = `record::id(id) AS id, record::id(store) AS store_id, record::id(order) AS io_id, name, qc_status,
@@ -39,11 +76,49 @@ const PHOTO_COLS = `record::id(id) AS id, record::id(store) AS store_id, record:
   fn::key(screen) AS screen_id, fn::key(line) AS line_id, photo_url, video_url, evidence_kind,
   fn::iso(coverage_from) AS coverage_from, fn::iso(coverage_to) AS coverage_to, fn::iso(taken_at) AS taken_at, created_by`;
 /** Factura con sus cobros anidados (la arista inversa nativa reemplaza el embed de PostgREST). */
-export const INVOICE_COLS = `record::id(id) AS id, record::id(store) AS store_id, fn::key(order) AS io_id, number,
+/** `fn::key(order)` sobre io_invoice (tabla con campo COMPUTED) cuesta ~1,3 ms por fila (4,2 s con 3 300
+ *  facturas); el IF en línea hace lo mismo en ~0,01 ms. */
+const KEY_ORDER = "IF order { record::id(order) } ELSE { NONE }";
+export const INVOICE_COLS = `record::id(id) AS id, record::id(store) AS store_id, ${KEY_ORDER} AS io_id, number,
   amount_minor, currency, issue_date, due_date, status, om_ref, pop_report_url, notes, paid_minor,
   (SELECT record::id(id) AS id, record::id(invoice) AS invoice_id, amount_minor, paid_on, reference, source,
           created_by, fn::iso(voided_at) AS voided_at, voided_by, void_reason, fn::iso(created_at) AS created_at
    FROM io_invoice_payment WHERE invoice = $parent.id ORDER BY created_at ASC) AS payments`;
+
+const INVOICE_BASE = `record::id(id) AS id, record::id(store) AS store_id, ${KEY_ORDER} AS io_id, number,
+  amount_minor, currency, issue_date, due_date, status, om_ref, pop_report_url, notes`;
+const PAYMENT_COLS = `record::id(id) AS id, record::id(invoice) AS invoice_id, amount_minor, paid_on, reference, source,
+  created_by, fn::iso(voided_at) AS voided_at, voided_by, void_reason, fn::iso(created_at) AS created_at`;
+
+/**
+ * Facturas de VARIAS filas con cobros y `paid_minor`, en un solo viaje: los cobros salen de UNA
+ * consulta indexada (`invoice IN $rids`). El `paid_minor` COMPUTED y la subconsulta
+ * `WHERE invoice = $parent.id` de INVOICE_COLS corren una vez por factura sin usar el índice
+ * (4,2 s con 3 300 facturas); para una sola orden INVOICE_COLS sigue siendo suficiente.
+ * `pre` = sentencias LET previas; `where` ya incluye el filtro de tienda.
+ */
+async function readInvoices(where: string, vars: Record<string, unknown>, pre = "", tail = ""): Promise<Row[]> {
+  const { inv, pay } = await surql<{ inv: Row[]; pay: Row[] }>(
+    `${pre}
+     LET $inv = SELECT ${INVOICE_BASE} FROM io_invoice WHERE ${where} ${tail};
+     LET $rids = $inv.map(|$x| type::record('io_invoice', $x.id));
+     RETURN { inv: $inv, pay: SELECT ${PAYMENT_COLS} FROM io_invoice_payment WHERE invoice IN $rids ORDER BY created_at ASC };`,
+    vars,
+  );
+  const byInvoice = new Map<string, Row[]>();
+  for (const p of pay) {
+    const k = String(p.invoice_id);
+    const list = byInvoice.get(k);
+    if (list) list.push(p);
+    else byInvoice.set(k, [p]);
+  }
+  return inv.map((i) => {
+    const payments = byInvoice.get(String(i.id)) ?? [];
+    // Mismo cálculo que el campo COMPUTED `paid_minor`: suma de cobros no revertidos.
+    const paid_minor = payments.reduce((t, p) => (p.voided_at == null ? t + Number(p.amount_minor) : t), 0);
+    return { ...i, paid_minor, payments };
+  });
+}
 
 const KINDS = {
   io_order: ORDER_COLS,
@@ -88,9 +163,11 @@ export async function getOrder(storeId: string, id: string): Promise<Row | null>
   return row && row.store_id === storeId ? row : null;
 }
 
-export async function listOrderRows(storeId: string, limit: number): Promise<Row[]> {
+/** TODAS las órdenes de la tienda (sin tope): etapa, cobro y búsqueda se derivan en JS, y un tope
+ *  silencioso dejaba fuera órdenes antiguas de filtros y de la búsqueda exacta por número. */
+export async function listOrderRows(storeId: string): Promise<Row[]> {
   const [rows, tz] = await Promise.all([
-    surql<Row[]>(`SELECT ${ORDER_COLS} FROM io_order WHERE store = ${S} ORDER BY starts_at DESC LIMIT $limit`, { store: storeId, limit }),
+    surql<Row[]>(`SELECT ${ORDER_COLS} FROM io_order WHERE store = ${S} ORDER BY starts_at DESC`, { store: storeId }),
     getStoreTimeZone(storeId),
   ]);
   return rows.map((r) => withOrderDays(r, tz));
@@ -106,13 +183,14 @@ export interface OrderChildren {
 
 /** Hijas de varias órdenes en un viaje (lista de órdenes). */
 export async function listChildrenOf(storeId: string, orderIds: string[]): Promise<OrderChildren> {
-  const ids = "$ids.map(|$i| type::record('io_order', $i))";
+  // LET: un `IN $ids.map(...)` inline se reevalúa por fila (O(filas × ids)).
+  const r = "LET $r = $ids.map(|$i| type::record('io_order', $i));";
   const [lines, oms, creatives, photos, invoices] = await Promise.all([
-    surql<Row[]>(`SELECT ${LINE_COLS} FROM io_line WHERE store = ${S} AND order IN ${ids}`, { store: storeId, ids: orderIds }),
-    surql<Row[]>(`SELECT ${AGENCY_ORDER_COLS} FROM io_agency_order WHERE store = ${S} AND order IN ${ids}`, { store: storeId, ids: orderIds }),
-    surql<Row[]>(`SELECT ${CREATIVE_COLS} FROM io_creative WHERE store = ${S} AND order IN ${ids}`, { store: storeId, ids: orderIds }),
-    surql<Row[]>(`SELECT ${PHOTO_COLS} FROM io_photo_check WHERE store = ${S} AND order IN ${ids}`, { store: storeId, ids: orderIds }),
-    surql<Row[]>(`SELECT ${INVOICE_COLS} FROM io_invoice WHERE store = ${S} AND order IN ${ids}`, { store: storeId, ids: orderIds }),
+    readLines(`store = ${S} AND order IN $r`, { store: storeId, ids: orderIds }, r),
+    surql<Row[]>(`${r} SELECT ${AGENCY_ORDER_COLS} FROM io_agency_order WHERE store = ${S} AND order IN $r`, { store: storeId, ids: orderIds }),
+    surql<Row[]>(`${r} SELECT ${CREATIVE_COLS} FROM io_creative WHERE store = ${S} AND order IN $r`, { store: storeId, ids: orderIds }),
+    surql<Row[]>(`${r} SELECT ${PHOTO_COLS} FROM io_photo_check WHERE store = ${S} AND order IN $r`, { store: storeId, ids: orderIds }),
+    readInvoices(`store = ${S} AND order IN $r`, { store: storeId, ids: orderIds }, r),
   ]);
   return { lines, oms, creatives, photos, invoices };
 }
@@ -310,9 +388,14 @@ export interface OrderFilter {
 
 const ORDER_BY = { starts_asc: "starts_at ASC", starts_desc: "starts_at DESC", created_desc: "created_at DESC" } as const;
 
+/** Prefijo LET del filtro `ids` (ver `listChildrenOf`: el `.map` inline se reevalúa por fila). */
+function orderIdsLet(f: OrderFilter): string {
+  return f.ids ? "LET $r = $ids.map(|$i| type::record('io_order', $i));" : "";
+}
+
 function orderWhere(f: OrderFilter): string {
   const c = [`store = ${S}`];
-  if (f.ids) c.push("id IN $ids.map(|$i| type::record('io_order', $i))");
+  if (f.ids) c.push("id IN $r");
   if (f.live) c.push("status != 'cancelled'");
   if (f.withBrand) c.push("brand != NONE");
   if (f.companyId) c.push("(advertiser = type::record('crm_company', $company) OR billing = type::record('crm_company', $company))");
@@ -325,7 +408,7 @@ export async function selectOrders(storeId: string, f: OrderFilter = {}): Promis
   if (f.ids && f.ids.length === 0) return [];
   const tz = await getStoreTimeZone(storeId);
   const rows = await surql<Row[]>(
-    `SELECT ${ORDER_COLS} FROM io_order WHERE ${orderWhere(f)} ${f.order ? `ORDER BY ${ORDER_BY[f.order]}` : ""} ${f.limit ? "LIMIT $limit" : ""}`,
+    `${orderIdsLet(f)} SELECT ${ORDER_COLS} FROM io_order WHERE ${orderWhere(f)} ${f.order ? `ORDER BY ${ORDER_BY[f.order]}` : ""} ${f.limit ? "LIMIT $limit" : ""}`,
     { store: storeId, ids: f.ids, company: f.companyId, endedBefore: f.endedBefore ? dayStart(f.endedBefore, tz) : undefined, limit: f.limit },
   );
   return rows.map((r) => withOrderDays(r, tz));
@@ -335,7 +418,7 @@ export async function countOrders(storeId: string, f: OrderFilter = {}): Promise
   if (f.ids && f.ids.length === 0) return 0;
   const endedBefore = f.endedBefore ? dayStart(f.endedBefore, await getStoreTimeZone(storeId)) : undefined;
   return (
-    (await surql<number[]>(`SELECT VALUE count() FROM io_order WHERE ${orderWhere(f)} GROUP ALL`, {
+    (await surql<number[]>(`${orderIdsLet(f)} SELECT VALUE count() FROM io_order WHERE ${orderWhere(f)} GROUP ALL`, {
       store: storeId, ids: f.ids, company: f.companyId, endedBefore,
     }))[0] ?? 0
   );
@@ -344,22 +427,20 @@ export async function countOrders(storeId: string, f: OrderFilter = {}): Promise
 /** Líneas de las órdenes dadas (DTO). */
 export async function selectLines(storeId: string, orderIds: string[]): Promise<Row[]> {
   if (orderIds.length === 0) return [];
-  return surql<Row[]>(
-    `SELECT ${LINE_COLS} FROM io_line WHERE store = ${S} AND order IN $ids.map(|$i| type::record('io_order', $i))`,
-    { store: storeId, ids: orderIds },
-  );
+  return readLines(`store = ${S} AND order IN $r`, { store: storeId, ids: orderIds }, "LET $r = $ids.map(|$i| type::record('io_order', $i));");
 }
 
 /** Facturas de la tienda con sus cobros anidados (más recientes primero). */
 export async function selectInvoices(storeId: string, limit?: number): Promise<Row[]> {
-  return surql<Row[]>(`SELECT ${INVOICE_COLS} FROM io_invoice WHERE store = ${S} ORDER BY created_at DESC ${limit ? "LIMIT $limit" : ""}`, { store: storeId, limit });
+  return readInvoices(`store = ${S}`, { store: storeId, limit }, "", `ORDER BY created_at DESC ${limit ? "LIMIT $limit" : ""}`);
 }
 
 /** Ids de órdenes (de `orderIds`) que ya tienen foto check. */
 export async function orderIdsWithPhotos(storeId: string, orderIds: string[]): Promise<Set<string>> {
   if (orderIds.length === 0) return new Set();
   const rows = await surql<string[]>(
-    `SELECT VALUE record::id(order) FROM io_photo_check WHERE store = ${S} AND order IN $ids.map(|$i| type::record('io_order', $i))`,
+    `LET $r = $ids.map(|$i| type::record('io_order', $i));
+     SELECT VALUE record::id(order) FROM io_photo_check WHERE store = ${S} AND order IN $r`,
     { store: storeId, ids: orderIds },
   );
   return new Set(rows);
@@ -385,8 +466,9 @@ export async function listCampaignsOfAdvertiser(storeId: string, companyId: stri
 /** Re-apunta el contacto principal de las campañas (fusión de contactos). */
 export async function repointCampaignContact(storeId: string, fromIds: string[], toId: string): Promise<void> {
   await surql(
-    `UPDATE io_campaign SET primary_contact = type::record('crm_contact', $to)
-     WHERE store = ${S} AND primary_contact IN $from.map(|$i| type::record('crm_contact', $i))`,
+    `LET $r = $from.map(|$i| type::record('crm_contact', $i));
+     UPDATE io_campaign SET primary_contact = type::record('crm_contact', $to)
+     WHERE store = ${S} AND primary_contact IN $r`,
     { store: storeId, from: fromIds, to: toId },
   );
 }

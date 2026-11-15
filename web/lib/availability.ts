@@ -102,8 +102,9 @@ export async function getScreenCapacities(
   const out = new Map<string, number>();
   if (screenIds.length === 0) return out;
   const rows = await surql<Array<{ id: string; capacity: number }>>(
-    `SELECT record::id(id) AS id, fn::screen_capacity(id) AS capacity FROM inv_screen
-     WHERE store = type::record('sys_store', $store) AND id IN $ids.map(|$i| type::record('inv_screen', $i))`,
+    `LET $r = $ids.map(|$i| type::record('inv_screen', $i));
+     SELECT record::id(id) AS id, fn::screen_capacity(id) AS capacity FROM inv_screen
+     WHERE store = type::record('sys_store', $store) AND id IN $r`,
     { store: storeId, ids: screenIds },
   );
   for (const r of rows) out.set(r.id, r.capacity);
@@ -149,12 +150,13 @@ async function loadAvailabilityGrid(
 
   // Sin paginación ni `limit` mudo: SurrealDB devuelve la ventana completa (truncar en silencio
   // sería sobreestimar disponibilidad = sobreventa). `screenIds` null = descubre por actividad.
-  const scope = screenIds ? "AND screen IN $ids.map(|$i| type::record('inv_screen', $i))" : "";
-  const bookScope = screenIds ? "AND slot.screen IN $ids.map(|$i| type::record('inv_screen', $i))" : "";
+  const idsLet = screenIds ? "LET $r = $ids.map(|$i| type::record('inv_screen', $i));" : "";
+  const scope = screenIds ? "AND screen IN $r" : "";
+  const bookScope = screenIds ? "AND slot.screen IN $r" : "";
   const vars = { store: storeId, ids: screenIds ?? undefined, from: winStart, to: winEnd };
   const [lines, books] = await Promise.all([
     surql<Array<Record<string, unknown>>>(
-      `SELECT record::id(order) AS io_id, record::id(screen) AS screen_id, fn::iso(starts_at) AS starts_at,
+      `${idsLet} SELECT record::id(order) AS io_id, record::id(screen) AS screen_id, fn::iso(starts_at) AS starts_at,
               fn::iso(ends_at) AS ends_at, cant_slots, order.number AS io_number, order.brand AS brand,
               order.status AS status, fn::iso(order.created_at) AS created_at, fn::iso(order.reservation_expires_at) AS reservation_expires_at
        FROM io_line WHERE store = type::record('sys_store', $store) ${scope}
@@ -162,7 +164,7 @@ async function loadAvailabilityGrid(
       vars,
     ),
     surql<Array<Record<string, unknown>>>(
-      `SELECT record::id(slot.screen) AS screen_id, fn::key(order) AS io_id, order.number AS io_number, order.brand AS brand,
+      `${idsLet} SELECT record::id(slot.screen) AS screen_id, fn::key(order) AS io_id, order.number AS io_number, order.brand AS brand,
               fn::iso(starts_at) AS starts_at, fn::iso(ends_at) AS ends_at, status
        FROM inv_booking WHERE store = type::record('sys_store', $store) ${bookScope} AND status != 'cancelled'
          AND starts_at < <datetime> $to AND ends_at > <datetime> $from`,

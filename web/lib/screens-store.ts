@@ -148,12 +148,13 @@ export async function listScreensBrief(
 ): Promise<Row[]> {
   if (opts.ids && opts.ids.length === 0) return [];
   return surql<Row[]>(
-    `SELECT record::id(id) AS id, name, external_ref, technology, width_px, height_px, price_pen, is_active,
+    `${opts.ids ? "LET $r = $ids.map(|$i| type::record('inv_screen', $i));" : ""}
+     SELECT record::id(id) AS id, name, external_ref, technology, width_px, height_px, price_pen, is_active,
        IF supplier { record::id(supplier) } ELSE { NONE } AS supplier_company_id,
        venue.name AS venue_name, venue.district AS district, venue.city AS city, supplier.name AS supplier_name
      FROM inv_screen
      WHERE store = ${S}
-       ${opts.ids ? "AND id IN $ids.map(|$i| type::record('inv_screen', $i))" : ""}
+       ${opts.ids ? "AND id IN $r" : ""}
        ${opts.activeOnly ? "AND is_active = true" : ""}
      ORDER BY name ASC ${opts.limit ? "LIMIT $limit" : ""}`,
     { store: storeId, ids: opts.ids, limit: opts.limit },

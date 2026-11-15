@@ -1,5 +1,6 @@
 // Repositorio de tiendas (tenants): SurrealDB `sys_store`. Ids como string plano.
 // Sin `import "server-only"`: lo usan scripts y tests en node plano.
+import { cache } from "react";
 import { surql } from "@/lib/surreal";
 
 export interface StoreRow {
@@ -32,22 +33,25 @@ function toRow(r: Record<string, unknown>): StoreRow {
   };
 }
 
-export async function getStore(id: string): Promise<StoreRow | null> {
+// `cache` de React: dentro de un request de servidor la misma tienda se lee una vez (cada página la pedía
+// 5-10 veces); fuera de un render (workers, tests, scripts) no memoiza.
+export const getStore = cache(async (id: string): Promise<StoreRow | null> => {
   if (!id) return null;
   const rows = await surql<Array<Record<string, unknown>>>(
     `SELECT ${COLS} FROM sys_store WHERE id = type::record('sys_store', $id)`,
     { id },
   );
   return rows[0] ? toRow(rows[0]) : null;
-}
+});
 
 /** Tiendas por antigüedad. `ids` filtra (vacío = ninguna). */
 export async function listStores(opts: { ids?: string[]; limit?: number } = {}): Promise<StoreRow[]> {
   const { ids, limit = 50 } = opts;
   if (ids && ids.length === 0) return [];
   const rows = await surql<Array<Record<string, unknown>>>(
-    `SELECT ${COLS}, created_at FROM sys_store
-     ${ids ? "WHERE id IN $ids.map(|$i| type::record('sys_store', $i))" : ""}
+    `${ids ? "LET $r = $ids.map(|$i| type::record('sys_store', $i));" : ""}
+     SELECT ${COLS}, created_at FROM sys_store
+     ${ids ? "WHERE id IN $r" : ""}
      ORDER BY created_at ASC LIMIT $limit`,
     { ids, limit },
   );
@@ -84,9 +88,9 @@ export async function setStoreTimeZone(storeId: string, tz: string): Promise<voi
 }
 
 /** Zona IANA del tenant. Falla si la tienda no existe o no tiene zona: nunca se asume una. */
-export async function getStoreTimeZone(storeId: string): Promise<string> {
+export const getStoreTimeZone = cache(async (storeId: string): Promise<string> => {
   const rows = await surql<Array<string | null>>(`SELECT VALUE timezone FROM sys_store WHERE id = type::record('sys_store', $id)`, { id: storeId });
   const tz = rows[0];
   if (!tz) throw new Error(`Tienda sin zona horaria: ${storeId}`);
   return tz;
-}
+});

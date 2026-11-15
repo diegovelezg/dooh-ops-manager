@@ -62,7 +62,8 @@ export async function getDomainProfiles(domains: string[]): Promise<Map<string, 
   const clean = [...new Set(domains.map(normalizeDomain).filter(Boolean))];
   if (clean.length === 0) return out;
   const rows = await surql<Array<Record<string, unknown>>>(
-    `SELECT ${PROFILE_COLS} FROM ai_domain_cache WHERE id IN $ds.map(|$d| type::record('ai_domain_cache', $d))`,
+    `LET $r = $ds.map(|$d| type::record('ai_domain_cache', $d));
+     SELECT ${PROFILE_COLS} FROM ai_domain_cache WHERE id IN $r`,
     { ds: clean },
   );
   for (const r of rows) {

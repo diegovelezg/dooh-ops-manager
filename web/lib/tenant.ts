@@ -11,6 +11,7 @@
 //
 // Solo server: nunca importar en cliente.
 import "server-only";
+import { cache } from "react";
 
 // SSOT (issue #8 P2): shop_currency siempre vía normalizeCurrency
 // (nunca `String(x ?? 'PEN')` a mano); resolveTenantStoreAction unifica el
@@ -86,7 +87,7 @@ export function isAnonDevAllowed(): boolean {
  *  Map vacío = sin sesión / sin membresías (fail-closed: sin acceso).
  *  Errores de DB se propagan: un fallo no puede degradar a "sin acceso" mudo
  *  ni, peor, a "acceso". Los callers que ya manejan error deniegan. */
-export async function getMyStoreRoles(): Promise<Map<string, MemberRole> | null> {
+export const getMyStoreRoles = cache(async (): Promise<Map<string, MemberRole> | null> => {
   if (!isDbConfigured()) return isAnonDevAllowed() ? null : new Map();
   const token = await getAccessToken();
   if (!token) return new Map();
@@ -99,7 +100,7 @@ export async function getMyStoreRoles(): Promise<Map<string, MemberRole> | null>
     if (isMemberRole(r.role)) out.set(r.store, r.role);
   }
   return out;
-}
+});
 
 /** IDs de tiendas del usuario actual. null = anon-dev explícito; [] = sin acceso. */
 export async function getMyStoreIds(): Promise<string[] | null> {

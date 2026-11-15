@@ -243,8 +243,9 @@ export async function listBrands(
     const bill = typeof o.billing_company_id === "string" ? billingName.get(o.billing_company_id) : null;
     if (bill) row.agenciesSet.add(bill);
   }
+  const ioById = new Map(ios.map((o) => [String(o.id), o]));
   for (const l of ((lines ?? []) as Array<Record<string, unknown>>)) {
-    const io = ios.find((o) => String(o.id) === String(l.io_id));
+    const io = ioById.get(String(l.io_id));
     if (!io) continue;
     const row = byBrand.get(keyOf(String(io.brand)));
     if (!row) continue;
