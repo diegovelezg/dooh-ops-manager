@@ -2,6 +2,7 @@
 // 0001_identity_tenancy.surql): access token de 15 min + refresh token rotativo.
 // Ambos viajan en cookies HttpOnly; `proxy.ts` renueva el par cuando el access
 // expira (los Server Components no pueden escribir cookies).
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { InternalError, NotAllowedError, NotFoundError, Surreal, type Tokens } from "surrealdb";
 import { surqlAs, surrealEnv } from "@/lib/surreal";
@@ -66,11 +67,12 @@ export async function refreshTokens(tokens: Tokens): Promise<Tokens | null> {
   }
 }
 
-/** Usuario de la sesión actual (cookies), o null. */
-export async function getSessionUser(): Promise<SessionUser | null> {
+/** Usuario de la sesión actual (cookies), o null. Valida contra la DB: `cache` de React lo hace UNA vez por
+ *  request (layout, página y actions lo pedían cada uno); fuera de un render no memoiza. */
+export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
   const store = await cookies();
   return validateAccessToken(store.get(ACCESS_COOKIE)?.value);
-}
+});
 
 /** Access token de la sesión actual (para `surqlAs`), o null. */
 export async function getAccessToken(): Promise<string | null> {

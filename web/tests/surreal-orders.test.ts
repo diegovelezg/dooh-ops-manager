@@ -39,10 +39,11 @@ after(async () => {
 });
 
 describe("listado completo", () => {
-  it("listOrderRows no topa en 200: las órdenes antiguas siguen visibles", async () => {
+  it("el listado de órdenes no topa en 200: las órdenes antiguas siguen visibles", async () => {
     const store = "store-many";
     await q(`CREATE sys_store:⟨${store}⟩ SET name='Many', io_prefix='MN'; FOR $i IN 0..205 { CREATE io_order SET store = sys_store:⟨${store}⟩, number = string::concat('MN-2027-', <string> $i), brand = 'M', currency = 'PEN', payment_terms_days = 30, starts_at = <datetime> '2027-01-01T05:00:00Z', ends_at = <datetime> '2027-01-02T05:00:00Z'; };`);
-    assert.equal((await o.listOrderRows(store)).length, 205);
+    const reads = await import("../lib/order-reads");
+    assert.equal((await reads.readOrderBundle(store, { live: false, order: "DESC" })).orders.length, 205);
   });
   it("cajón de empresa: declara `truncated` solo al pasar el tope de 500 órdenes", async () => {
     const crm = await import("../lib/crm-db");
@@ -141,6 +142,27 @@ describe("capacidad por día-pantalla", () => {
     const s = await newScreen("default");
     assert.equal((await av.getScreenCapacities(A, [s])).get(s), 10);
     assert.equal((await av.getScreenCapacities(B, [s])).get(s), 0);
+  });
+
+  it("capacidad en lote = por pantalla (misma regla que fn::screen_capacity)", async () => {
+    // >200 ids fuerza la ruta por lote; de a una pantalla va por `fn::screen_capacity`. Mezcla los 3 casos de la regla.
+    const ids: string[] = [];
+    for (let i = 0; i < 205; i++) ids.push(await newScreen(`lote-${i}`));
+    for (let i = 0; i < ids.length; i++) {
+      if (i % 3 === 1) await q(`FOR $n IN [1, 2, 3] { CREATE inv_slot SET store = sys_store:⟨${A}⟩, screen = type::record('inv_screen', $s), slot_index = $n; }`, { s: ids[i] });
+      if (i % 3 === 2) await q(`FOR $n IN [1, 2] { CREATE inv_slot SET store = sys_store:⟨${A}⟩, screen = type::record('inv_screen', $s), slot_index = $n, is_active = false; }`, { s: ids[i] });
+    }
+    const bulk = await av.getScreenCapacities(A, ids);
+    assert.equal(bulk.size, ids.length);
+    const seen = new Set<number>();
+    for (const id of ids) {
+      const single = (await av.getScreenCapacities(A, [id])).get(id);
+      assert.equal(bulk.get(id), single, `pantalla ${id}`);
+      seen.add(single as number);
+    }
+    assert.deepEqual([...seen].sort((a, b) => a - b), [0, 3, 10], "cubre pausada, slots propios y default");
+    // Ajena a la tienda: sin capacidad, también por lote.
+    assert.equal((await av.getScreenCapacities(B, ids)).get(ids[0]), 0);
   });
 
   it("CONCURRENTES: 12 ventas de 4 slots sobre la misma pantalla/día, solo caben 2", async () => {

@@ -25,6 +25,9 @@ import type { BrandDetail } from "@/lib/brand-db";
 import { BrandPautaBadge } from "@/components/badges";
 import { useTz } from "@/components/tenant-time";
 
+/** Pantallas que se listan en la ficha; el resto va como "+N más" (con 80 pantallas era un muro de texto). */
+const SCREENS_PREVIEW = 12;
+
 // Carga diferida: chat y research solo se descargan al usarse (mismo
 // patrón que orden-drawer: el drawer inicial no paga react-markdown).
 function DrawerLoading({ label }: { label: string }) {
@@ -177,7 +180,7 @@ export function MarcaDrawer({
           <dl className="grid gap-x-6 gap-y-4 text-sm sm:grid-cols-2">
             <div><dt className="text-xs text-muted-foreground">Pedidos</dt><dd className="mt-1 text-sm tabular-nums">{formatNumber(ios.length)}</dd></div>
             <div><dt className="text-xs text-muted-foreground">Inversión</dt><dd className="mt-1 text-sm tabular-nums"><Money amountMinor={detail.total_minor} currency="PEN" /></dd></div>
-            <div><dt className="text-xs text-muted-foreground">Pantallas</dt><dd className="mt-1 text-sm">{screens.length > 0 ? screens.join(" · ") : "—"}</dd></div>
+            <div><dt className="text-xs text-muted-foreground">Pantallas</dt><dd className="mt-1 text-sm" title={screens.join(" · ")}>{screens.length > 0 ? screens.slice(0, SCREENS_PREVIEW).join(" · ") + (screens.length > SCREENS_PREVIEW ? ` · +${formatNumber(screens.length - SCREENS_PREVIEW)} más` : "") : "—"}</dd></div>
             <div><dt className="text-xs text-muted-foreground">Vigencia</dt><dd className="mt-1 text-sm tabular-nums">{[detail.first_start, detail.last_end].filter(Boolean).join(" → ") || "—"}</dd></div>
             <div className="sm:col-span-2"><dt className="text-xs text-muted-foreground">Empresas</dt><dd className="mt-1 text-sm">{companies.length > 0 ? companies.map((c) => `${toTitleCase(c.name)} (${roleLabel(c.roles)})`).join(" · ") : "—"}</dd></div>
           </dl>

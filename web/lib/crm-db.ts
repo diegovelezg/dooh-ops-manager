@@ -4,6 +4,8 @@ import { listCampaignsOfAdvertiser, selectLines, selectOrders } from "@/lib/orde
 import { surql } from "@/lib/surreal";
 import { normalizeCurrency } from "@/lib/currency";
 import { COMPANIES_SORT_ALIASES } from "@/lib/sort";
+import { matchAll, matchScore, norm } from "@/lib/search-sql";
+import { iso } from "@/lib/surql-cols";
 import type { CompanyKind, CrmStatusFilter } from "@/lib/crm";
 
 export interface CrmCompany {
@@ -61,22 +63,23 @@ export function parseCompaniesSort(sp: { sort?: string; dir?: string }): {
 /** Columnas de empresa como DTO de la app (ids planos, fechas ISO). */
 export const COMPANY_COLS = `record::id(id) AS id, record::id(store) AS store_id, name, legal_name, kind,
   tax_id, domain, email, phone, address, city, country, notes, external_ref, agency_commission_pct,
-  category_iab, provider_type, created_by, updated_by, fn::iso(deleted_at) AS deleted_at`;
+  category_iab, provider_type, created_by, updated_by, ${iso("deleted_at")} AS deleted_at`;
 
 /** Columnas de contacto como DTO de la app. */
 export const CONTACT_COLS = `record::id(id) AS id, record::id(store) AS store_id,
   IF company { record::id(company) } ELSE { NONE } AS company_id, first_name, last_name, email, phone,
-  job_title, is_primary, created_by, updated_by, fn::iso(deleted_at) AS deleted_at`;
+  job_title, is_primary, created_by, updated_by, ${iso("deleted_at")} AS deleted_at`;
 
 /** `$param` (array de claves) → array de record ids de `table`. */
 export const recs = (table: string, param: string): string =>
   `${param}.map(|$i| type::record('${table}', $i))`;
 
+// `id ASC` final: desempate determinista (SurrealDB 4 no garantiza el orden de filas empatadas).
 const SORT_ORDER: Record<CompaniesSortKey, (dir: string) => string> = {
-  name: (d) => `name_key ${d}`,
-  type: (d) => `kind ${d}, name_key ASC`,
-  contacts: (d) => `contacts_count ${d}, name_key ASC`,
-  tax_id: (d) => `tax_missing ASC, tax_key ${d}, name_key ASC`,
+  name: (d) => `name_key ${d}, id ASC`,
+  type: (d) => `kind ${d}, name_key ASC, id ASC`,
+  contacts: (d) => `contacts_count ${d}, name_key ASC, id ASC`,
+  tax_id: (d) => `tax_missing ASC, tax_key ${d}, name_key ASC, id ASC`,
 };
 
 function toCompany(r: Record<string, unknown>): CrmCompany {
@@ -134,8 +137,17 @@ export async function listCrmCompanies(
   // La casa (kind NONE, red propia) nunca lista: no es contraparte.
   const dir = sortDir === "desc" ? "DESC" : "ASC";
   // Con texto y orden por nombre asc manda la relevancia (relevancia primero).
-  const order = q && sortKey === "name" && dir === "ASC" ? "score DESC, name_key ASC" : SORT_ORDER[sortKey](dir);
-  const result = await surql<{ total: number; rows: Array<Record<string, unknown>> }>(
+  const order = q && sortKey === "name" && dir === "ASC" ? "score DESC, name_key ASC, id ASC" : SORT_ORDER[sortKey](dir);
+  // Dos fases (ver `listCrmContacts`): (1) filtrar y ordenar con columnas mínimas — `search` solo si hay texto y
+  // únicamente las claves de orden de la columna elegida; (2) proyectar COMPANY_COLS y el conteo SOLO de la página.
+  // El orden se reaplica en JS: sin ORDER BY, SurrealDB 4 no garantiza el orden de `FROM $ids`.
+  const KEYS: Record<CompaniesSortKey, string> = {
+    name: `${norm("name")} AS name_key`,
+    type: `kind, ${norm("name")} AS name_key`,
+    contacts: `${norm("name")} AS name_key, $cm[<string> id] ?? 0 AS contacts_count`,
+    tax_id: `${norm("name")} AS name_key, tax_id = NONE AS tax_missing, ${norm("tax_id")} AS tax_key`,
+  };
+  const result = await surql<{ total: number; order: string[]; rows: Array<Record<string, unknown>> }>(
     `LET $tokens = fn::tokens($q);
      LET $qn = fn::norm($q);
      -- Conteo agregado una vez (GROUP BY) y buscado por clave: la subconsulta correlacionada
@@ -143,23 +155,23 @@ export async function listCrmCompanies(
      LET $cc = SELECT company, count() AS n FROM crm_contact
        WHERE store = type::record('sys_store', $store) AND deleted_at = NONE AND company != NONE GROUP BY company;
      LET $cm = object::from_entries($cc.map(|$x| [<string> $x.company, $x.n]));
-     LET $m = SELECT ${COMPANY_COLS},
-         fn::norm(name) AS name_key,
-         tax_id = NONE AS tax_missing,
-         fn::norm(tax_id) AS tax_key,
-         $cm[<string> id] ?? 0 AS contacts_count,
-         fn::match_score(fn::norm(name), search, $qn) AS score
+     LET $m = SELECT id, ${KEYS[sortKey]}${q ? `, ${matchScore(norm("name"), "search")} AS score` : ""}
        FROM crm_company
        WHERE store = type::record('sys_store', $store) AND kind != NONE
          AND ($status = 'all' OR ($status = 'active' AND deleted_at = NONE) OR ($status = 'archived' AND deleted_at != NONE))
          AND ($kinds = NONE OR kind IN $kinds)
-         AND fn::match_all(search, $tokens);
+         ${q ? `AND ${matchAll("search")}` : ""};
+     LET $top = SELECT * FROM $m ORDER BY ${order} LIMIT $limit START $offset;
+     LET $ids = $top.map(|$x| $x.id);
      RETURN {
        total: array::len($m),
-       rows: (SELECT * FROM $m ORDER BY ${order} LIMIT $limit START $offset)
+       order: $ids.map(|$i| record::id($i)),
+       rows: SELECT ${COMPANY_COLS}, $cm[<string> id] ?? 0 AS contacts_count FROM $ids
      };`,
     { store: storeId, q, status, kinds: kinds ? [...kinds] : undefined, limit: pageSize, offset: (page - 1) * pageSize },
   );
+  const at = new Map(result.order.map((id, i) => [id, i]));
+  result.rows.sort((a, b) => (at.get(String(a.id)) ?? 0) - (at.get(String(b.id)) ?? 0));
   return { rows: result.rows.map(toCompany), total: result.total };
 }
 
@@ -197,29 +209,48 @@ export async function listCrmContacts(
   // (agencia + anunciante) lo pone el caller vía parseCompanyKinds.
   const kinds: readonly CompanyKind[] | undefined = opts.kinds;
   if (kinds !== undefined && kinds.length === 0) return { rows: [], total: 0, truncated: false };
-  // Filtros duros (sin texto). En modo activo los contactos de empresas
-  // archivadas no operan; los sueltos (sin empresa) se conservan. Con filtro
-  // de tipo, los sueltos también se conservan.
-  const result = await surql<{ base: number; rows: Array<Record<string, unknown>> }>(
-    `LET $tokens = fn::tokens($q);
-     LET $qn = fn::norm($q);
-     LET $hard = SELECT ${CONTACT_COLS}, created_at, search,
-         company.name AS company_name,
-         fn::norm(string::concat(first_name ?? '', ' ', last_name ?? '')) AS person_key
-       FROM crm_contact
-       WHERE store = type::record('sys_store', $store)
+  // Filtros duros (sin texto). En modo activo los contactos de empresas archivadas no operan; los sueltos
+  // (sin empresa) se conservan. Con filtro de tipo, los sueltos también se conservan.
+  // "Empresa activa" / "tipo" se materializan UNA vez en un LET (`IN $var`), no como join `company.*` por
+  // contacto (~115 ms con 8 000 contactos). OJO: no inlinear la subconsulta en el WHERE — si ese WHERE
+  // también llama a una `fn::` (match_all), SurrealDB 4.0.1 la reevalúa POR FILA (medido: 39 s vs 36 ms).
+  const S = "type::record('sys_store', $store)";
+  const sets = `LET $activeCos = IF $status = 'active' { SELECT VALUE id FROM crm_company WHERE store = ${S} AND deleted_at = NONE } ELSE { [] };
+       LET $kindCos = IF $kinds != NONE { SELECT VALUE id FROM crm_company WHERE store = ${S} AND kind IN $kinds } ELSE { [] };`;
+  const hard = `store = ${S}
          AND ($company = NONE OR company = type::record('crm_company', $company))
          AND ($status = 'all'
               OR ($status = 'archived' AND deleted_at != NONE)
-              OR ($status = 'active' AND deleted_at = NONE AND (company = NONE OR company.deleted_at = NONE)))
-         AND ($kinds = NONE OR (company = NONE OR company.kind IN $kinds));
-     LET $matched = SELECT *, fn::match_score(person_key, search, $qn) AS score FROM $hard WHERE fn::match_all(search, $tokens);
+              OR ($status = 'active' AND deleted_at = NONE AND (company = NONE OR company IN $activeCos)))
+         AND ($kinds = NONE OR company = NONE OR company IN $kindCos)`;
+  // Dos fases: (1) elegir los ids de la página con columnas mínimas — `search` (COMPUTED, caro) solo se evalúa
+  // si hay texto, y la relevancia solo sobre los que calzan; (2) proyectar columnas y `company.name` SOLO de
+  // esos ids. El orden final se reaplica en JS: sin ORDER BY, SurrealDB 4 no garantiza el orden de `FROM $ids`.
+  const pick = q
+    ? `LET $matched = SELECT id, created_at, first_name, last_name, search FROM crm_contact
+         WHERE ${hard} AND ${matchAll("search")};
+       LET $scored = SELECT id, created_at, ${matchScore(norm("string::concat(first_name ?? '', ' ', last_name ?? '')"), "search")} AS score
+         FROM $matched;
+       LET $top = SELECT id, score, created_at FROM $scored ORDER BY score DESC, created_at ASC, id ASC LIMIT $limit;
+       LET $base = 0;`
+    : `LET $hard = SELECT id, created_at FROM crm_contact WHERE ${hard};
+       LET $base = array::len($hard);
+       LET $top = SELECT id, created_at FROM $hard ORDER BY created_at ASC, id ASC LIMIT $limit;`;
+  const result = await surql<{ base: number; order: string[]; rows: Array<Record<string, unknown>> }>(
+    `LET $tokens = fn::tokens($q);
+     LET $qn = fn::norm($q);
+     ${sets}
+     ${pick}
+     LET $ids = $top.map(|$x| $x.id);
      RETURN {
-       base: array::len($hard),
-       rows: (SELECT * FROM $matched ORDER BY ${q ? "score DESC, created_at ASC" : "created_at ASC"} LIMIT $limit)
+       base: $base,
+       order: $ids.map(|$i| record::id($i)),
+       rows: SELECT ${CONTACT_COLS}, company.name AS company_name FROM $ids
      };`,
     { store: storeId, q, company: opts.companyId ?? undefined, status, kinds: kinds ? [...kinds] : undefined, limit },
   );
+  const at = new Map(result.order.map((id, i) => [id, i]));
+  result.rows.sort((a, b) => (at.get(String(a.id)) ?? 0) - (at.get(String(b.id)) ?? 0));
   const rows: CrmContactListItem[] = result.rows.map((c) => ({
     ...toContact(c),
     company_name: (c.company_name as string | null) ?? null,

@@ -31,30 +31,18 @@ export const instant = false;
 export default async function DashboardLayout({ children }: { children: ReactNode }) {
   // Todo lo de abajo solo corre a request-time (ver nota arriba).
   await connection();
-  let stores: TenantStore[] = [];
-  try {
-    stores = await listMyStores();
-  } catch {
-    // header degradado
-  }
-  // Email de la cuenta logueada en servidor: el UserMenu lo recibe como prop
-  // para pintar el avatar + email en el primer paint, sin depender del fetch
-  // cliente (que fallaba y dejaba el dropdown sin email).
-  let userEmail: string | null = null;
-  let userRoles: Record<string, import("@/lib/roles").MemberRole> = {};
-  try {
-    userEmail = (await getSessionUser())?.email ?? null;
-  } catch {
-    userEmail = null;
-  }
-  try {
-    const roles = await getMyStoreRoles();
-    if (roles) userRoles = Object.fromEntries(roles.entries()) as Record<string, import("@/lib/roles").MemberRole>;
-  } catch {
-    userRoles = {};
-  }
-  // Rol para los drawers del host central (misma resolución que las páginas).
-  const activeStoreId = await resolveActiveStoreId().catch(() => null);
+  // Lecturas independientes en paralelo; cada una degrada sola (el header sigue funcionando si falla).
+  // Email de la cuenta logueada en servidor: el UserMenu lo recibe como prop para pintar el avatar + email en el
+  // primer paint, sin depender del fetch cliente (que fallaba y dejaba el dropdown sin email).
+  const [stores, userEmail, userRoles, activeStoreId] = await Promise.all([
+    listMyStores().catch((): TenantStore[] => []),
+    getSessionUser().then((u) => u?.email ?? null).catch(() => null),
+    getMyStoreRoles()
+      .then((roles) => (roles ? (Object.fromEntries(roles.entries()) as Record<string, import("@/lib/roles").MemberRole>) : {}))
+      .catch((): Record<string, import("@/lib/roles").MemberRole> => ({})),
+    // Rol para los drawers del host central (misma resolución que las páginas).
+    resolveActiveStoreId().catch(() => null),
+  ]);
   const myRole = activeStoreId ? (userRoles[activeStoreId] ?? null) : null;
   const tz = stores.find((s) => s.id === activeStoreId)?.timezone ?? null;
   return (
@@ -64,7 +52,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
         <ChatDockProvider stores={stores.map((s) => ({ id: s.id, label: displayStoreName(s) }))}>
           <AppTooltipProvider>
             <AppSidebar />
-            <SidebarInset>
+            <SidebarInset className="min-w-0">
               <AppHeader stores={stores} userEmail={userEmail} userRoles={userRoles} />
               <DashboardShell>{children}</DashboardShell>
               <Suspense>

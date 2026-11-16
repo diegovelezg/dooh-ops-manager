@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { CalendarDays } from "lucide-react";
 import { cn } from "cn";
 import { AppCard } from "@/components/app-card";
@@ -25,6 +25,9 @@ export interface OccupancyScreen {
 }
 
 export type OccupancyEstado = "all" | "libre" | "ocupada";
+
+/** Filas que se pintan por tramo: con 1 600 pantallas × 14 días eran ~90 000 nodos DOM de una vez (carga de ~3 s). */
+const ROWS_PER_CHUNK = 80;
 
 const CELL_TEXT: Record<DayCellState, string> = {
   free: "bg-emerald-500/15 text-emerald-700",
@@ -75,6 +78,13 @@ export function OccupancyTimeline({
   const [isPending, startTransition] = useTransition();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedDay, setSelectedDay] = useState<{ screenId: string; screenName: string; day: string } | null>(null);
+
+  // Render incremental: se pintan `shown` filas y el resto entra al acercarse al final (o con el botón). Los totales y
+  // el filtro de estado siguen calculándose sobre TODAS las pantallas. `shown` vuelve a su base al cambiar de vista.
+  const viewSig = `${screens.length}|${estado}|${desde}|${dias}|${q}|${ciudad}|${supplierValue}`;
+  const [grow, setGrow] = useState({ sig: viewSig, n: ROWS_PER_CHUNK });
+  const shown = grow.sig === viewSig ? grow.n : ROWS_PER_CHUNK;
+  const sentinelRef = useRef<HTMLTableRowElement | null>(null);
 
   const days: string[] = useMemo(() => Array.from({ length: dias }, (_, i) => addDays(desde, i)), [desde, dias]);
   const remaining = availability.remaining;
@@ -139,6 +149,21 @@ export function OccupancyTimeline({
   };
 
   const shift = (n: number) => go({ desde: addDays(desde, n) });
+
+  const rendered = visibles.slice(0, shown);
+  const remainingRows = visibles.length - rendered.length;
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting) setGrow({ sig: viewSig, n: shown + ROWS_PER_CHUNK });
+      },
+      { rootMargin: "600px" },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [remainingRows, shown, viewSig]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -231,7 +256,7 @@ export function OccupancyTimeline({
               </tr>
             </thead>
             <tbody>
-              {visibles.map((s) => (
+              {rendered.map((s) => (
                 <tr
                   key={s.id}
                   className="border-b last:border-0 hover:bg-muted/30"
@@ -304,6 +329,20 @@ export function OccupancyTimeline({
                   })}
                 </tr>
               ))}
+              {remainingRows > 0 && (
+                <tr ref={sentinelRef}>
+                  <td colSpan={days.length + 1} className="px-3 py-3 text-center">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setGrow({ sig: viewSig, n: shown + ROWS_PER_CHUNK })}
+                    >
+                      Mostrar más · {formatNumber(remainingRows)} pantallas restantes
+                    </Button>
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

@@ -40,8 +40,7 @@ function snap(over: Partial<DashboardSnapshot> = {}): DashboardSnapshot {
     renovacion30d: { conRelevo: 0, total: 0, ratio: null },
     alerts: [],
     huecos: [],
-    counts: { ois: 0, screens: 0, truncated: false },
-    truncated: false,
+    counts: { ois: 0, screens: 0 },
     ...over,
   };
 }

@@ -1,4 +1,3 @@
-import { workflowRows } from "@/lib/order-workflow-reads";
 import { AUTHORIZATION_LABELS, authorizationKind, isAuthorized, materialsCovered, deliveriesCovered, supplierConfirmed, consumesCapacity } from "@/lib/order-workflow";
 // Dashboard Hoy v1 — solo desde la OI (sin facturación).
 // Fuente: io_orders + lines + io_agency_orders + creatives + io_photo_checks.
@@ -10,16 +9,11 @@ import { AUTHORIZATION_LABELS, authorizationKind, isAuthorized, materialsCovered
 // los bloqueos (alerts) y por_certificar viven solo en el Inbox vía
 // buildBriefFacts.
 import { orderStage, orderTiming } from "@/lib/order-stage";
-import { getStore } from "@/lib/stores-db";
-import { countOrders, listChildrenOf, selectInvoices, selectOrders } from "@/lib/orders-store";
-import { listCompanies } from "@/lib/crm-store";
-import { countScreens, listScreensBrief } from "@/lib/screens-store";
+import { readDashboardData } from "@/lib/dashboard-reads";
+import { groupByIo } from "@/lib/order-reads";
 import { normalizeCurrency } from "@/lib/currency";
 import { aggregateCobranza, toBillingInvoice, type BillingInvoice, type CobranzaTotals } from "@/lib/billing-status";
 import { addDays, DAY_MS, dayStartMs, isoDayPart, isoDayToNum, monthFirstISO, todayIn } from "@/lib/format";
-import { getStoreTimeZone } from "@/lib/stores-db";
-import { getScreenCapacities } from "@/lib/availability";
-import { DEFAULT_SLOTS_PER_SCREEN } from "@/lib/store-slots";
 
 export type AlertKind = "sin_om" | "material" | "sin_evidencia" | "termina_sin_relevo";
 
@@ -81,9 +75,7 @@ export interface DashboardSnapshot {
   renovacion30d: { conRelevo: number; total: number; ratio: number | null };
   alerts: DashboardAlert[];
   huecos: Hueco[];
-  counts: { ois: number; screens: number; truncated: boolean };
-  /** true si alguna fuente se truncó por límite (muestra parcial, no total exacto). */
-  truncated: boolean;
+  counts: { ois: number; screens: number };
 }
 
 // SSOT: primitivos de fecha en lib/format.ts.
@@ -105,114 +97,65 @@ function dayNumOf(v: unknown): number | null {
   return d ? isoDayToNum(d) : null;
 }
 
-/** Agrupa por orden en un solo recorrido (evita `filter` por orden: O(órdenes × filas)). */
-function groupByIo<T extends Record<string, unknown>>(rows: T[]): Map<string, T[]> {
-  const m = new Map<string, T[]>();
-  for (const r of rows) {
-    const k = String(r.io_id);
-    const list = m.get(k);
-    if (list) list.push(r);
-    else m.set(k, [r]);
-  }
-  return m;
-}
-
 export async function getDashboardSnapshot(storeId: string): Promise<DashboardSnapshot> {
   const now = Date.now();
+  // Una sola ronda de lecturas paralelas (ver `dashboard-reads`); el resto es cálculo en memoria.
+  const data = await readDashboardData(storeId);
   // Todo el tablero opera en días del TENANT (`sys_store.timezone`), igual que la capacidad y las líneas
   // (guardadas como instantes UTC): un día/mes en UTC recortaría o desplazaría horas de cada línea.
-  const tz = await getStoreTimeZone(storeId);
+  const tz = data.tz;
   const todayISO = todayIn(tz, now);
   const todayNum = isoDayToNum(todayISO);
   const today00 = dayStartMs(todayISO, tz);
 
-  const [store, screens, screensTotal, ois, oisTotal, invoices] = await Promise.all([
-    getStore(storeId),
-    listScreensBrief(storeId, { activeOnly: true, limit: 500 }),
-    countScreens(storeId, { activeOnly: true }),
-    selectOrders(storeId, { live: true, order: "starts_asc" }),
-    countOrders(storeId, { live: true }),
-    selectInvoices(storeId),
-  ]);
-  const truncated = (screensTotal ?? 0) > 500 || (oisTotal ?? 0) > 500;
-
-  const currency = normalizeCurrency(store?.shop_currency ?? "PEN");
-  const screenRows = ((screens ?? []) as Array<Record<string, unknown>>).map((s) => ({
-    id: String(s.id),
-    name: String(s.name ?? "—"),
-  }));
-  const oiRows = ois.map((o) => ({
+  const currency = normalizeCurrency(data.store?.shop_currency ?? "PEN");
+  const screenRows = data.screens;
+  const invoices = data.invoices;
+  const oiRows = data.orders.map((o) => ({
     ...o,
     id: String(o.id),
     io_number: String(o.io_number ?? "—"),
     brand: (o.brand as string | null) ?? null,
     status: String(o.status ?? ""),
-    created_at: (o.created_at as string | null) ?? null,
     starts_at: (o.starts_at as string | null) ?? null,
     ends_at: (o.ends_at as string | null) ?? null,
     currency: normalizeCurrency(o.currency, currency),
     key: String(o.advertiser_company_id ?? o.billing_company_id ?? ""),
     advertiser_id: (o.advertiser_company_id as string | null) ?? null,
     billing_id: (o.billing_company_id as string | null) ?? null,
+    company_name: ((o.advertiser_company_id ? o.advertiser_name : o.billing_name) as string | null) ?? null,
   }));
-  const oiIds = oiRows.map((o) => o.id);
 
-  let lineRows: Array<{
-    io_id: string;
-    screen_id: string;
-    rate_minor: number;
-    cant_slots: number;
-    starts_at: string;
-    ends_at: string;
-    starts_ms: number | null;
-    ends_ms: number | null;
-  }> = [];
-  const omBy = new Set<string>();
-  const creaBy = new Map<string, { any: boolean; pending: boolean }>();
-  const photoBy = new Set<string>();
-  let nameBy = new Map<string, string>();
-
-  if (oiIds.length > 0) {
-    const { lines, oms, creatives: creas, photos } = await listChildrenOf(storeId, oiIds);
-    lineRows = lines.map((l) => ({
+  const lines = data.lines;
+  const lineRows = lines.map((l) => {
+    const n = Number(l.cant_slots ?? 1);
+    return {
       io_id: String(l.io_id),
       screen_id: String(l.screen_id),
       rate_minor: Number(l.rate_minor ?? 0),
-      cant_slots: (() => {
-        const n = Number(l.cant_slots ?? 1);
-        return Number.isFinite(n) && n >= 1 ? Math.floor(n) : 1;
-      })(),
+      cant_slots: Number.isFinite(n) && n >= 1 ? Math.floor(n) : 1,
       starts_at: String(l.starts_at),
       ends_at: String(l.ends_at),
       starts_ms: parseMs(l.starts_at),
       ends_ms: parseMs(l.ends_at),
-    }));
-    const workflow = await workflowRows(storeId, oiIds);
-    const linesOf = groupByIo(lines), omsOf = groupByIo(oms), creasOf = groupByIo(creas);
-    for (const o of oiRows) {
-      const ownLines = linesOf.get(o.id) ?? [];
-      if (isAuthorized(o, omsOf.get(o.id) ?? [])) omBy.add(o.id);
-      const ready = materialsCovered(ownLines, creasOf.get(o.id) ?? []) && ownLines.every(l => supplierConfirmed(l, workflow.purchases));
-      creaBy.set(o.id, { any: ready, pending: !ready });
-      if (deliveriesCovered(ownLines, workflow.deliveries, photos)) photoBy.add(o.id);
-    }
-    const coIds = [...new Set(oiRows.flatMap((o) => [o.advertiser_id, o.billing_id]).filter(Boolean))] as string[];
-    if (coIds.length > 0) {
-      const cos = await listCompanies(storeId, coIds);
-      nameBy = new Map(
-        cos.map((c) => [
-          String(c.id),
-          String(c.name ?? "—"),
-        ]),
-      );
-    }
+    };
+  });
+  const omBy = new Set<string>();
+  const creaBy = new Map<string, { any: boolean; pending: boolean }>();
+  const photoBy = new Set<string>();
+  const linesOf = groupByIo(lines), omsOf = groupByIo(data.oms), creasOf = groupByIo(data.creatives);
+  const purchasesOf = groupByIo(data.purchases), deliveriesOf = groupByIo(data.deliveries), photosOf = groupByIo(data.photos);
+  for (const o of oiRows) {
+    const ownLines = linesOf.get(o.id) ?? [];
+    if (isAuthorized(o, omsOf.get(o.id) ?? [])) omBy.add(o.id);
+    const purchases = purchasesOf.get(o.id) ?? [];
+    const ready = materialsCovered(ownLines, creasOf.get(o.id) ?? []) && ownLines.every((l) => supplierConfirmed(l, purchases));
+    creaBy.set(o.id, { any: ready, pending: !ready });
+    if (deliveriesCovered(ownLines, deliveriesOf.get(o.id) ?? [], photosOf.get(o.id) ?? [])) photoBy.add(o.id);
   }
 
   const oiById = new Map(oiRows.map((o) => [o.id, o]));
-  const companyOf = (o: (typeof oiRows)[number]): string | null => {
-    const id = o.advertiser_id ?? o.billing_id;
-    return id ? (nameBy.get(id) ?? null) : null;
-  };
+  const companyOf = (o: (typeof oiRows)[number]): string | null => o.company_name;
   const materialsOk = (ioId: string): boolean => {
     const c = creaBy.get(ioId);
     return Boolean(c?.any && !c.pending);
@@ -301,11 +244,13 @@ export async function getDashboardSnapshot(storeId: string): Promise<DashboardSn
   // reservas explícitas vigentes); bookings no entran al KPI (ver matriz).
   const WIN = 14;
   const winEnd = dayStartMs(addDays(todayISO, WIN), tz);
-  // Sin red de seguridad: si la capacidad falla, el tablero falla (nunca un 10 inventado en silencio).
-  const capacities = await getScreenCapacities(storeId, screenRows.map((s) => s.id));
-  const capOf = (id: string): number => capacities.get(id) ?? DEFAULT_SLOTS_PER_SCREEN;
+  // Capacidad por pantalla: viene de la DB (`fn::screen_capacity`, regla única) en la ronda de lecturas.
+  const capacities = new Map(screenRows.map((s) => [s.id, s.capacity]));
+  const capOf = (id: string): number => capacities.get(id) ?? 0;
   // Solo pantallas activas: numerador y denominador sobre el mismo universo (nunca > 100%).
   const activeScreens = new Set(screenRows.map((s) => s.id));
+  // Límites de los WIN días (+1 de cierre): los mismos para todas las líneas, se calculan una vez.
+  const dayB = Array.from({ length: WIN + 1 }, (_, d) => dayStartMs(addDays(todayISO, d), tz));
   const perScreen = new Map<string, Set<number>>();
   const soldByScreen = new Map<string, number>();
   for (const l of lineRows) {
@@ -317,8 +262,8 @@ export async function getDashboardSnapshot(storeId: string): Promise<DashboardSn
     const e = Math.min(l.ends_ms, winEnd);
     if (e <= s) continue;
     for (let d = 0; d < WIN; d++) {
-      const dayFrom = dayStartMs(addDays(todayISO, d), tz);
-      const dayEnd = dayStartMs(addDays(todayISO, d + 1), tz);
+      const dayFrom = dayB[d];
+      const dayEnd = dayB[d + 1];
       if (s < dayEnd && dayFrom < e) {
         let set = perScreen.get(l.screen_id);
         if (!set) {
@@ -343,15 +288,16 @@ export async function getDashboardSnapshot(storeId: string): Promise<DashboardSn
     ...orderTiming(o, lineRowsOf.get(o.id) ?? [], ref, tz),
   }).stage;
   const lineRowsOf = groupByIo(lineRows);
-  const alAireAt = (ref: number): typeof oiRows => oiRows.filter((o) => stageAt(o, ref) === "al_aire");
-  const alAireOis = alAireAt(now);
-  const prevAlAireOis = alAireAt(now - DAY_MS).length;
+  // La etapa de hoy se calcula una vez por orden (la usan "al aire" y "por certificar").
+  const stageNow = new Map(oiRows.map((o) => [o.id, stageAt(o, now)]));
+  const alAireOis = oiRows.filter((o) => stageNow.get(o.id) === "al_aire");
+  const prevAlAireOis = oiRows.filter((o) => stageAt(o, now - DAY_MS) === "al_aire").length;
   const alAireIds = new Set(alAireOis.map((o) => o.id));
   const alAireScreens = new Set(lineRows.filter((l) =>
     alAireIds.has(l.io_id) && l.starts_ms !== null && l.ends_ms !== null
     && l.starts_ms <= now && now < l.ends_ms,
   ).map((l) => l.screen_id));
-  const porCertificar = oiRows.filter((o) => stageAt(o, now) === "por_certificar").length;
+  const porCertificar = oiRows.filter((o) => stageNow.get(o.id) === "por_certificar").length;
 
   // 5. Renovación 30d por anunciante (advertiser ?? billing): órdenes FIRMADAS que terminan en
   // los próximos 30 días (un borrador aún no vendido no "vence"); el relevo puede ser cualquier
@@ -360,15 +306,20 @@ export async function getDashboardSnapshot(storeId: string): Promise<DashboardSn
     const e = dayNumOf(o.ends_at);
     return o.status === "signed" && e !== null && e >= todayNum && e <= todayNum + 30;
   });
+  // Inicios por anunciante, indexados una vez: el relevo se consulta por clave, no recorriendo todas las órdenes.
+  const startsByKey = new Map<string, Array<{ id: string; day: number }>>();
+  for (const other of oiRows) {
+    const day = dayNumOf(other.starts_at);
+    if (!other.key || day === null) continue;
+    const list = startsByKey.get(other.key);
+    if (list) list.push({ id: other.id, day });
+    else startsByKey.set(other.key, [{ id: other.id, day }]);
+  }
   const hasRelevo = (o: (typeof oiRows)[number]): boolean => {
     if (!o.key) return false;
     const e = dayNumOf(o.ends_at);
     if (e === null) return false;
-    return oiRows.some((other) => {
-      if (other.id === o.id || !other.key || other.key !== o.key) return false;
-      const s2 = dayNumOf(other.starts_at);
-      return s2 !== null && s2 > e;
-    });
+    return (startsByKey.get(o.key) ?? []).some((x) => x.id !== o.id && x.day > e);
   };
   const conRelevo = in30.filter(hasRelevo).length;
 
@@ -525,7 +476,6 @@ export async function getDashboardSnapshot(storeId: string): Promise<DashboardSn
     },
     alerts: alerts.slice(0, 20),
     huecos,
-    counts: { ois: oiRows.length, screens: screenRows.length, truncated },
-    truncated,
+    counts: { ois: oiRows.length, screens: screenRows.length },
   };
 }

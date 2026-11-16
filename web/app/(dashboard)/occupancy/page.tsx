@@ -89,30 +89,15 @@ export default async function OcupacionPage({
     casaName = def.casaName;
     const listSupplierId = def.supplierId;
     const ownOnly = def.ownOnly;
-    const [first, opts] = await Promise.all([
-      // ownOnly se filtra en la query (IS NULL + paginado), nunca en memoria
-      // sobre la muestra (ver ScreensFilter.ownOnly).
-      listScreens(storeId, { q, city: ciudad, supplierId: listSupplierId, ownOnly, active: "active", sortKey: "name", sortDir: "asc", page: 1, pageSize: 100 }),
+    const [all, opts] = await Promise.all([
+      // ownOnly se filtra en la query (IS NULL), nunca en memoria sobre la muestra (ver ScreensFilter.ownOnly).
+      // La matriz necesita TODAS las pantallas (con solo una página los conflictos caían fuera y "Ocupadas" salía
+      // vacío): una sola lectura (`all`), no un bucle de consultas secuenciales de 100 en 100 (17 con 1 600 pantallas).
+      listScreens(storeId, { q, city: ciudad, supplierId: listSupplierId, ownOnly, active: "active", sortKey: "name", sortDir: "asc", all: true }),
       listScreenFilterOptions(storeId).catch(() => ({ cities: [] as string[], suppliers: [] as Array<{ id: string; name: string }>, truncated: false })),
     ]);
-    // La matriz necesita TODAS las pantallas (208 activas hoy): con solo la
-    // pág.1 los conflictos caían fuera y "Ocupadas" salía vacío. Bucle
-    // paginado con tope 2000 (mismo patrón que el export).
-    const allRows = [...first.rows];
-    const totalScreens = first.total ?? first.rows.length;
-    let screensTruncated = Boolean(first.truncated);
-    for (let page = 2; page <= 20 && allRows.length < totalScreens; page += 1) {
-      const next = await listScreens(storeId, { q, city: ciudad, supplierId: listSupplierId, ownOnly, active: "active", sortKey: "name", sortDir: "asc", page, pageSize: 100 });
-      if (next.truncated) {
-        screensTruncated = true;
-        break;
-      }
-      allRows.push(...next.rows);
-      if (next.rows.length === 0) break;
-    }
-    if (allRows.length < totalScreens) screensTruncated = true;
-    const rows = allRows;
-    truncated = screensTruncated;
+    const rows = all.rows;
+    truncated = rows.length < all.total;
     screens = rows.map((r) => ({
       id: r.id,
       name: r.name,

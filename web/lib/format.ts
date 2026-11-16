@@ -397,11 +397,20 @@ export function todayIn(tz: string, now: Date | number = new Date()): string {
 
 /** Inicio del día `day` en `tz` como instante (ms UTC). Respeta DST. */
 export function dayStartMs(day: string, tz: string): number {
+  const key = `${tz}|${day}`;
+  const hit = dayStartCache.get(key);
+  if (hit !== undefined) return hit;
   const [y, m, d] = day.split("-").map(Number);
   const guess = Date.UTC(y, m - 1, d);
   const first = guess - offsetMs(tz, guess);
-  return guess - offsetMs(tz, first);
+  const ms = guess - offsetMs(tz, first);
+  // Cada cálculo son 2 `Intl.formatToParts` (~10 µs): los bucles por línea × día lo repetían millones de veces.
+  // Función pura de (día, zona): memoizable; el tope evita crecer sin límite con fechas arbitrarias.
+  if (dayStartCache.size >= 20_000) dayStartCache.clear();
+  dayStartCache.set(key, ms);
+  return ms;
 }
+const dayStartCache = new Map<string, number>();
 
 /** Inicio del día `day` en `tz` como ISO UTC ("2026-11-03T05:00:00.000Z"): lo que va a la BD. */
 export function dayStart(day: string, tz: string): string {

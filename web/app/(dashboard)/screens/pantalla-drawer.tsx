@@ -768,8 +768,8 @@ export function PantallaDrawer({ screenId, onClose }: { screenId: string; onClos
               )}
               {tags.length > 0 && (
                 <div className="flex flex-wrap gap-1.5" aria-label="Etiquetas">
-                  {tags.map((t) => (
-                    <AttributeBadge key={t} label={t} title="Etiqueta" className="tabular-nums" />
+                  {tags.map((t, i) => (
+                    <AttributeBadge key={`${i}:${t}`} label={t} title="Etiqueta" className="tabular-nums" />
                   ))}
                 </div>
               )}

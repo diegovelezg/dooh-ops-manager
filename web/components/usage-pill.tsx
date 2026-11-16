@@ -41,27 +41,20 @@ function StoreUsagePill({ storeId }: { storeId: string }) {
   useEffect(() => {
     let alive = true;
     const ctrl = new AbortController();
+    // Un solo request: el día + `all_tokens` (histórico). Antes eran dos, cada 30 s por pestaña.
     const load = () => {
-      const day = fetch(`/api/usage?store=${encodeURIComponent(storeId)}&from=${todayIn(tz)}`, {
-        signal: ctrl.signal,
-      }).then((r) => (r.ok ? r.json() : null));
-      const all = fetch(`/api/usage?store=${encodeURIComponent(storeId)}`, {
-        signal: ctrl.signal,
-      }).then((r) => (r.ok ? r.json() : null));
-      Promise.allSettled([day, all])
-        .then(([d, a]) => {
+      if (document.visibilityState !== "visible") return; // pestaña oculta: no consulta
+      fetch(`/api/usage?store=${encodeURIComponent(storeId)}&from=${todayIn(tz)}`, { signal: ctrl.signal })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => {
           if (!alive) return;
           setLoaded(true);
-          setFailed(
-            d.status !== "fulfilled" || typeof d.value?.total_tokens !== "number" ||
-            a.status !== "fulfilled" || typeof a.value?.total_tokens !== "number",
-          );
-          if (d.status === "fulfilled" && d.value && typeof d.value.total_tokens === "number") {
-            setTodayTokens(d.value.total_tokens as number);
-            setTodayCalls(typeof d.value.calls === "number" ? d.value.calls : 0);
-          }
-          if (a.status === "fulfilled" && a.value && typeof a.value.total_tokens === "number") {
-            setAllTokens(a.value.total_tokens as number);
+          const ok = typeof d?.total_tokens === "number" && typeof d?.all_tokens === "number";
+          setFailed(!ok);
+          if (ok) {
+            setTodayTokens(d.total_tokens as number);
+            setTodayCalls(typeof d.calls === "number" ? d.calls : 0);
+            setAllTokens(d.all_tokens as number);
           }
         })
         .catch(() => {
@@ -72,13 +65,15 @@ function StoreUsagePill({ storeId }: { storeId: string }) {
         });
     };
     load();
-    // El pill monta una vez; los chats ocurren despues: revalida cada 30s y al volver el foco.
-    const t = setInterval(load, 30_000);
+    // El pill monta una vez; los chats ocurren despues: revalida cada 60s (solo visible) y al volver el foco.
+    const t = setInterval(load, 60_000);
     window.addEventListener("focus", load);
+    document.addEventListener("visibilitychange", load);
     return () => {
       alive = false;
       clearInterval(t);
       window.removeEventListener("focus", load);
+      document.removeEventListener("visibilitychange", load);
       ctrl.abort();
     };
   }, [storeId, tz]);

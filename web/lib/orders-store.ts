@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import { assignments, surql, thrownMessage, type LinkMap } from "@/lib/surreal";
 import { addDays, dayOf, dayStart, displayEndOf, todayIn } from "@/lib/format";
 import { getStoreTimeZone } from "@/lib/stores-db";
+import { iso, key } from "@/lib/surql-cols";
 
 const S = "type::record('sys_store', $store)";
 export type Row = Record<string, unknown>;
@@ -14,22 +15,22 @@ export type Row = Record<string, unknown>;
  *  `starts_at`/`ends_at` de la orden se traducen a días del tenant en `withOrderDays`. */
 export const ORDER_COLS = `record::id(id) AS id, record::id(store) AS store_id, number AS io_number, status, brand,
   currency, workflow_rev, agreement_revision, authorization_kind, responsible_email,
-  fn::iso(reservation_expires_at) AS reservation_expires_at, fn::iso(reserved_at) AS reserved_at, reserved_by, reservation_origin, fn::key(advertiser) AS advertiser_company_id, fn::key(billing) AS billing_company_id,
-  fn::key(agency) AS agency_company_id, fn::key(billing_contact) AS billing_contact_id,
-  fn::key(signer_contact) AS signer_contact_id, fn::key(payment_contact) AS payment_contact_id,
-  fn::key(manager_contact) AS manager_contact_id, fn::iso(starts_at) AS starts_at, fn::iso(ends_at) AS ends_at, payment_terms, payment_terms_days,
-  commission_pct, service_clauses, signed_by_agency, signed_by_company, fn::iso(signed_at) AS signed_at, notes,
+  ${iso("reservation_expires_at")} AS reservation_expires_at, ${iso("reserved_at")} AS reserved_at, reserved_by, reservation_origin, ${key("advertiser")} AS advertiser_company_id, ${key("billing")} AS billing_company_id,
+  ${key("agency")} AS agency_company_id, ${key("billing_contact")} AS billing_contact_id,
+  ${key("signer_contact")} AS signer_contact_id, ${key("payment_contact")} AS payment_contact_id,
+  ${key("manager_contact")} AS manager_contact_id, ${iso("starts_at")} AS starts_at, ${iso("ends_at")} AS ends_at, payment_terms, payment_terms_days,
+  commission_pct, service_clauses, signed_by_agency, signed_by_company, ${iso("signed_at")} AS signed_at, notes,
   doc_orden_medios, doc_orden_compra, doc_contrato, billing_portal_email, billing_detail, invoice_registration,
-  snapshot_json, created_by, updated_by, fn::iso(created_at) AS created_at, fn::iso(updated_at) AS updated_at`;
+  snapshot_json, created_by, updated_by, ${iso("created_at")} AS created_at, ${iso("updated_at")} AS updated_at`;
 
 export const LINE_COLS = `record::id(id) AS id, record::id(store) AS store_id, record::id(order) AS io_id,
-  record::id(screen) AS screen_id, fn::key(slot) AS slot_id, fn::iso(starts_at) AS starts_at, fn::iso(ends_at) AS ends_at,
+  record::id(screen) AS screen_id, ${key("slot")} AS slot_id, ${iso("starts_at")} AS starts_at, ${iso("ends_at")} AS ends_at,
   screen.name AS screen_name, rate_minor, tarifa_regular_minor, cant_meses, cant_dias, cant_slots, notes,
-  fn::key(screen.supplier) AS supplier_company_id, screen.ownership AS ownership,
+  ${key("screen.supplier")} AS supplier_company_id, screen.ownership AS ownership,
   screen.width_px AS screen_width_px, screen.height_px AS screen_height_px, screen.duration_sec AS screen_duration_sec`;
 
 const LINE_BASE = `record::id(id) AS id, record::id(store) AS store_id, record::id(order) AS io_id,
-  record::id(screen) AS screen_id, fn::key(slot) AS slot_id, fn::iso(starts_at) AS starts_at, fn::iso(ends_at) AS ends_at,
+  record::id(screen) AS screen_id, ${key("slot")} AS slot_id, ${iso("starts_at")} AS starts_at, ${iso("ends_at")} AS ends_at,
   rate_minor, tarifa_regular_minor, cant_meses, cant_dias, cant_slots, notes`;
 
 /**
@@ -41,7 +42,7 @@ const LINE_BASE = `record::id(id) AS id, record::id(store) AS store_id, record::
 async function readLines(where: string, vars: Record<string, unknown>, pre = ""): Promise<Row[]> {
   const { lines, screens } = await surql<{ lines: Array<Row & { screen_key?: string }>; screens: Row[] }>(
     `${pre}
-     LET $ln = SELECT ${LINE_BASE}, fn::key(screen) AS screen_key FROM io_line WHERE ${where};
+     LET $ln = SELECT ${LINE_BASE}, ${key("screen")} AS screen_key FROM io_line WHERE ${where};
      LET $sids = array::distinct($ln.map(|$l| type::record('inv_screen', $l.screen_key)));
      RETURN {
        lines: $ln,
@@ -69,12 +70,12 @@ const AGENCY_ORDER_COLS = `record::id(id) AS id, record::id(store) AS store_id, 
   portal, issued_at, document_url, notes, created_by, agreement_revision`;
 const CREATIVE_COLS = `record::id(id) AS id, record::id(store) AS store_id, record::id(order) AS io_id, name, qc_status,
   legal_status, file_url, created_by, duration_s, width_px, height_px, aspect,
-  lines.map(|$l| record::id($l)) AS line_ids, fn::iso(superseded_at) AS superseded_at,
-  fn::key(supersedes) AS supersedes_id, qc_notes, legal_notes, qc_reviewed_by, legal_reviewed_by,
-  fn::iso(qc_reviewed_at) AS qc_reviewed_at, fn::iso(legal_reviewed_at) AS legal_reviewed_at`;
+  lines.map(|$l| record::id($l)) AS line_ids, ${iso("superseded_at")} AS superseded_at,
+  ${key("supersedes")} AS supersedes_id, qc_notes, legal_notes, qc_reviewed_by, legal_reviewed_by,
+  ${iso("qc_reviewed_at")} AS qc_reviewed_at, ${iso("legal_reviewed_at")} AS legal_reviewed_at`;
 const PHOTO_COLS = `record::id(id) AS id, record::id(store) AS store_id, record::id(order) AS io_id,
-  fn::key(screen) AS screen_id, fn::key(line) AS line_id, photo_url, video_url, evidence_kind,
-  fn::iso(coverage_from) AS coverage_from, fn::iso(coverage_to) AS coverage_to, fn::iso(taken_at) AS taken_at, created_by`;
+  ${key("screen")} AS screen_id, ${key("line")} AS line_id, photo_url, video_url, evidence_kind,
+  ${iso("coverage_from")} AS coverage_from, ${iso("coverage_to")} AS coverage_to, ${iso("taken_at")} AS taken_at, created_by`;
 /** Factura con sus cobros anidados (la arista inversa nativa reemplaza el embed de PostgREST). */
 /** `fn::key(order)` sobre io_invoice (tabla con campo COMPUTED) cuesta ~1,3 ms por fila (4,2 s con 3 300
  *  facturas); el IF en línea hace lo mismo en ~0,01 ms. */
@@ -82,13 +83,13 @@ const KEY_ORDER = "IF order { record::id(order) } ELSE { NONE }";
 export const INVOICE_COLS = `record::id(id) AS id, record::id(store) AS store_id, ${KEY_ORDER} AS io_id, number,
   amount_minor, currency, issue_date, due_date, status, om_ref, pop_report_url, notes, paid_minor,
   (SELECT record::id(id) AS id, record::id(invoice) AS invoice_id, amount_minor, paid_on, reference, source,
-          created_by, fn::iso(voided_at) AS voided_at, voided_by, void_reason, fn::iso(created_at) AS created_at
+          created_by, ${iso("voided_at")} AS voided_at, voided_by, void_reason, ${iso("created_at")} AS created_at
    FROM io_invoice_payment WHERE invoice = $parent.id ORDER BY created_at ASC) AS payments`;
 
 const INVOICE_BASE = `record::id(id) AS id, record::id(store) AS store_id, ${KEY_ORDER} AS io_id, number,
   amount_minor, currency, issue_date, due_date, status, om_ref, pop_report_url, notes`;
 const PAYMENT_COLS = `record::id(id) AS id, record::id(invoice) AS invoice_id, amount_minor, paid_on, reference, source,
-  created_by, fn::iso(voided_at) AS voided_at, voided_by, void_reason, fn::iso(created_at) AS created_at`;
+  created_by, ${iso("voided_at")} AS voided_at, voided_by, void_reason, ${iso("created_at")} AS created_at`;
 
 /**
  * Facturas de VARIAS filas con cobros y `paid_minor`, en un solo viaje: los cobros salen de UNA
@@ -163,16 +164,6 @@ export async function getOrder(storeId: string, id: string): Promise<Row | null>
   return row && row.store_id === storeId ? row : null;
 }
 
-/** TODAS las órdenes de la tienda (sin tope): etapa, cobro y búsqueda se derivan en JS, y un tope
- *  silencioso dejaba fuera órdenes antiguas de filtros y de la búsqueda exacta por número. */
-export async function listOrderRows(storeId: string): Promise<Row[]> {
-  const [rows, tz] = await Promise.all([
-    surql<Row[]>(`SELECT ${ORDER_COLS} FROM io_order WHERE store = ${S} ORDER BY starts_at DESC`, { store: storeId }),
-    getStoreTimeZone(storeId),
-  ]);
-  return rows.map((r) => withOrderDays(r, tz));
-}
-
 export interface OrderChildren {
   lines: Row[];
   oms: Row[];
@@ -236,8 +227,8 @@ export async function orderDependents(storeId: string, orderId: string) {
 /** Líneas de la pantalla que tocan el día `[from, to)` con su orden (ocupación del día). */
 export async function listScreenDayLines(storeId: string, screenId: string, from: string, to: string): Promise<Row[]> {
   return surql<Row[]>(
-    `SELECT fn::iso(starts_at) AS starts_at, fn::iso(ends_at) AS ends_at, cant_slots,
-            order.number AS io_number, order.brand AS brand, order.status AS status, fn::iso(order.created_at) AS created_at, fn::iso(order.reservation_expires_at) AS reservation_expires_at
+    `SELECT ${iso("starts_at")} AS starts_at, ${iso("ends_at")} AS ends_at, cant_slots,
+            order.number AS io_number, order.brand AS brand, order.status AS status, ${iso("order.created_at")} AS created_at, ${iso("order.reservation_expires_at")} AS reservation_expires_at
      FROM io_line
      WHERE store = ${S} AND screen = type::record('inv_screen', $screen)
        AND starts_at < <datetime> $to AND ends_at > <datetime> $from`,
@@ -363,7 +354,7 @@ export const dbMessage = thrownMessage;
 /** Bookings (slot de la pantalla) que tocan el día `[from, to)`, con su orden. */
 export async function listScreenDayBookings(storeId: string, screenId: string, from: string, to: string): Promise<Row[]> {
   return surql<Row[]>(
-    `SELECT fn::iso(starts_at) AS starts_at, fn::iso(ends_at) AS ends_at, status, order.number AS io_number, order.brand AS brand
+    `SELECT ${iso("starts_at")} AS starts_at, ${iso("ends_at")} AS ends_at, status, order.number AS io_number, order.brand AS brand
      FROM inv_booking
      WHERE store = ${S} AND slot.screen = type::record('inv_screen', $screen) AND status != 'cancelled'
        AND starts_at < <datetime> $to AND ends_at > <datetime> $from`,
@@ -457,7 +448,7 @@ export async function listDistinctBrands(storeId: string, limit: number): Promis
 /** Campañas del anunciante (más recientes primero). */
 export async function listCampaignsOfAdvertiser(storeId: string, companyId: string, limit: number): Promise<Row[]> {
   return surql<Row[]>(
-    `SELECT record::id(id) AS id, name, status, starts_at, ends_at, fn::key(primary_contact) AS primary_contact_id
+    `SELECT record::id(id) AS id, name, status, starts_at, ends_at, ${key("primary_contact")} AS primary_contact_id
      FROM io_campaign WHERE store = ${S} AND advertiser = type::record('crm_company', $company) ORDER BY created_at DESC LIMIT $limit`,
     { store: storeId, company: companyId, limit },
   );

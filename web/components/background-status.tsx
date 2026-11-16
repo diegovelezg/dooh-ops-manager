@@ -162,6 +162,7 @@ export function BackgroundStatus({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!starting && activeRuns.length === 0) return;
     const t = setInterval(() => {
+      if (document.visibilityState !== "visible") return; // pestaña oculta: nadie ve el progreso
       setNow(Date.now());
       void refreshRuns();
     }, 2000);
@@ -171,11 +172,18 @@ export function BackgroundStatus({ children }: { children: ReactNode }) {
   // Red lenta siempre viva: los runs que arranca el SERVIDOR (p. ej. perfil
   // profundo o import en server actions) no pasan por start() del cliente; sin
   // este poll nadie los descubre y sus toasts jamás aparecen. 6s, best-effort.
+  // Solo con la pestaña visible (cada poll es un server action = varias consultas por pestaña abierta); al
+  // volver a verla se refresca al instante, así que ocultarla no pierde toasts.
   useEffect(() => {
-    const t = setInterval(() => {
-      void refreshRuns();
-    }, 6000);
-    return () => clearInterval(t);
+    const tick = () => {
+      if (document.visibilityState === "visible") void refreshRuns();
+    };
+    const t = setInterval(tick, 6000);
+    document.addEventListener("visibilitychange", tick);
+    return () => {
+      clearInterval(t);
+      document.removeEventListener("visibilitychange", tick);
+    };
   }, [refreshRuns]);
 
   const start = useCallback(

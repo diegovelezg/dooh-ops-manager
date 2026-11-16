@@ -119,9 +119,9 @@ export default async function FinanzasPage({
     overdueMinor: number;
     overdueCount: number;
     topBrands: Array<{ brand: string; gross: number; ios: number }>;
-    topAdvertisers: Array<{ name: string; gross: number; ios: number }>;
-    topScreens: Array<{ name: string; gross: number; lines: number }>;
-    bottomScreens: Array<{ name: string; gross: number; lines: number }>;
+    topAdvertisers: Array<{ id: string; name: string; gross: number; ios: number }>;
+    topScreens: Array<{ id: string; name: string; gross: number; lines: number }>;
+    bottomScreens: Array<{ id: string; name: string; gross: number; lines: number }>;
   }
   let finBy: CurrencyFinance[] = [];
   let activeMoneda: string | null = null;
@@ -239,11 +239,11 @@ export default async function FinanzasPage({
         .sort((a, b) => b.gross - a.gross)
         .slice(0, 10);
       const topAdvertisers = [...grossByAdv.entries()]
-        .map(([id, v]) => ({ name: advNameByAll.get(id) || "Sin nombre", gross: v.gross, ios: v.ios.size }))
+        .map(([id, v]) => ({ id, name: advNameByAll.get(id) || "Sin nombre", gross: v.gross, ios: v.ios.size }))
         .sort((a, b) => b.gross - a.gross)
         .slice(0, 10);
       const ranked = [...grossByScreen.entries()]
-        .map(([id, v]) => ({ name: screenNameByAll.get(id) ?? "Sin nombre", gross: v.gross, lines: v.lines }))
+        .map(([id, v]) => ({ id, name: screenNameByAll.get(id) ?? "Sin nombre", gross: v.gross, lines: v.lines }))
         .sort((a, b) => b.gross - a.gross);
       return {
         currency: cur,
@@ -378,7 +378,7 @@ export default async function FinanzasPage({
                       </DataTableHeader>
                       <DataTableBody className="tabular-nums">
                         {fin.topScreens.map((r) => (
-                          <DataTableRow key={r.name}>
+                          <DataTableRow key={r.id}>
                             <DataTableTd>{r.name}</DataTableTd>
                             <DataTableTd numeric>{formatNumber(r.lines)}</DataTableTd>
                             <DataTableTd numeric><Money amountMinor={r.gross} currency={fin.currency} /></DataTableTd>
@@ -396,7 +396,7 @@ export default async function FinanzasPage({
                       </DataTableHeader>
                       <DataTableBody className="tabular-nums">
                         {fin.bottomScreens.map((r) => (
-                          <DataTableRow key={r.name}>
+                          <DataTableRow key={r.id}>
                             <DataTableTd>{r.name}</DataTableTd>
                             <DataTableTd numeric>{formatNumber(r.lines)}</DataTableTd>
                             <DataTableTd numeric><Money amountMinor={r.gross} currency={fin.currency} /></DataTableTd>
@@ -504,7 +504,7 @@ export default async function FinanzasPage({
                     </DataTableHeader>
                     <DataTableBody className="tabular-nums">
                       {fin.topAdvertisers.map((r) => (
-                        <DataTableRow key={r.name}>
+                        <DataTableRow key={r.id}>
                           <DataTableTd>{r.name}</DataTableTd>
                           <DataTableTd numeric>{formatNumber(r.ios)}</DataTableTd>
                           <DataTableTd numeric><Money amountMinor={r.gross} currency={fin.currency} /></DataTableTd>

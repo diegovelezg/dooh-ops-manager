@@ -175,18 +175,24 @@ export async function hasStoreMembership(userId: string, storeId: string): Promi
   }
 }
 
-/** Tiendas visibles para el usuario actual. Fuera de membresía no se lista
- *  nada (el ?store= hostil se ignora aguas abajo en `getMyActiveStore`). */
-export async function listMyStores(requestedId?: string | null): Promise<TenantStore[]> {
+// `cache` de React: dentro de un request de servidor la misma consulta de tiendas se hace UNA vez (layout,
+// `resolveActiveStoreId` y `loadPageData` la repetían: 3 viajes por página); fuera de un render no memoiza.
+const listMyStoresCached = cache(async (requestedId: string | null): Promise<TenantStore[]> => {
   const ids = await getMyStoreIds();
   if (ids === null) return (await listStores(requestedId)).stores;
   if (ids.length === 0) return [];
   if (requestedId) {
-    if (!ids.includes(requestedId)) return listMyStores();
+    if (!ids.includes(requestedId)) return listMyStoresCached(null);
     const one = await getStore(requestedId);
     return one ? [toTenantStore(one)] : [];
   }
   return (await dbListStores({ ids, limit: ids.length })).map(toTenantStore);
+});
+
+/** Tiendas visibles para el usuario actual. Fuera de membresía no se lista
+ *  nada (el ?store= hostil se ignora aguas abajo en `getMyActiveStore`). */
+export function listMyStores(requestedId?: string | null): Promise<TenantStore[]> {
+  return listMyStoresCached(requestedId ?? null);
 }
 
 /** `getActiveStore` filtrado por membresía: ?store= fuera del tenant se

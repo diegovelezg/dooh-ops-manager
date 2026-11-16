@@ -133,12 +133,8 @@ export default async function DashboardPage() {
                 ))}
               </ul>
             )}
-            <p
-              className="mt-3 text-xs text-muted-foreground tabular-nums"
-              title={snap.truncated ? "Muestra parcial: la fuente se truncó por límite" : undefined}
-            >
-              {formatNumber(snap.counts.ois)} órdenes vigentes · {formatNumber(snap.counts.screens)} pantallas
-              {snap.truncated ? " · muestra parcial" : ""}.
+            <p className="mt-3 text-xs text-muted-foreground tabular-nums">
+              {formatNumber(snap.counts.ois)} órdenes vigentes · {formatNumber(snap.counts.screens)} pantallas.
             </p>
           </AppCard>
         </>

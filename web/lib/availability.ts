@@ -13,6 +13,7 @@ import { normalizeLineSlots } from "@/lib/order-lines";
 import type { OccupiedRange } from "@/lib/availability-utils";
 import { addDays, DAY_MS, dayOf, dayStart, displayEndOf, isValidISODate, dayNumToISO, isoDayToNum } from "@/lib/format";
 import { getStoreTimeZone } from "@/lib/stores-db";
+import { iso, key } from "@/lib/surql-cols";
 
 export { displayEndOf };
 
@@ -94,13 +95,39 @@ export async function getScreenConflicts(
   return (await getPeriodAvailability(storeId, null, starts, ends, opts)).conflicts;
 }
 
-/** Capacidad slots/día por pantalla (regla única en la DB: `fn::screen_capacity`). */
+/** Con más pantallas que esto la regla se evalúa por lote: una pasada sobre los slots de la tienda en vez de
+ *  3 consultas por pantalla (~0,15 ms c/u: 240 ms con 1 600 pantallas). El lote cuesta ~45 ms fijos: por pantalla
+ *  gana hasta unas 300 (umbral conservador: 200). */
+const BULK_CAPACITY_FROM = 200;
+
+/** Capacidad slots/día de TODAS las pantallas de la tienda en una pasada. Misma regla que
+ *  `fn::screen_capacity` (0007): slots activos propios; con slots pero todos inactivos, 0 (pausada); sin slots
+ *  definidos, el default de la tienda (10). Va INLINE y no como `fn::`: el mismo cuerpo envuelto en una función de
+ *  usuario tarda ~2,6× más (122 ms vs 46 ms con 1 600 pantallas, SurrealDB 4.0.1). La prueba
+ *  "capacidad en lote = por pantalla" (tests/surreal-orders.test.ts) garantiza que ambas coinciden. */
+const STORE_CAPACITIES = `
+  LET $store = type::record('sys_store', $store);
+  LET $def = (SELECT VALUE default_slots_per_screen FROM ONLY $store) ?? 10;
+  LET $act = object::from_entries((SELECT screen, count() AS n FROM inv_slot WHERE store = $store AND is_active != false GROUP BY screen).map(|$x| [<string> $x.screen, $x.n]));
+  LET $any = (SELECT VALUE screen FROM inv_slot WHERE store = $store GROUP BY screen).map(|$s| <string> $s);
+  RETURN (SELECT record::id(id) AS id,
+    IF ($act[<string> id] ?? 0) > 0 { $act[<string> id] } ELSE IF <string> id IN $any { 0 } ELSE { $def } AS capacity
+    FROM inv_screen WHERE store = $store);`;
+
+/** Capacidad slots/día por pantalla (regla única en la DB: `fn::screen_capacity`; el lote aplica la misma). */
 export async function getScreenCapacities(
   storeId: string,
   screenIds: string[],
 ): Promise<Map<string, number>> {
   const out = new Map<string, number>();
   if (screenIds.length === 0) return out;
+  if (screenIds.length > BULK_CAPACITY_FROM) {
+    const all = await surql<Array<{ id: string; capacity: number }>>(STORE_CAPACITIES, { store: storeId });
+    const byId = new Map(all.map((r) => [r.id, r.capacity]));
+    // Ids ajenos o inexistentes: sin pantalla no hay capacidad que vender.
+    for (const id of screenIds) out.set(id, byId.get(id) ?? 0);
+    return out;
+  }
   const rows = await surql<Array<{ id: string; capacity: number }>>(
     `LET $r = $ids.map(|$i| type::record('inv_screen', $i));
      SELECT record::id(id) AS id, fn::screen_capacity(id) AS capacity FROM inv_screen
@@ -154,23 +181,43 @@ async function loadAvailabilityGrid(
   const scope = screenIds ? "AND screen IN $r" : "";
   const bookScope = screenIds ? "AND slot.screen IN $r" : "";
   const vars = { store: storeId, ids: screenIds ?? undefined, from: winStart, to: winEnd };
-  const [lines, books] = await Promise.all([
-    surql<Array<Record<string, unknown>>>(
-      `${idsLet} SELECT record::id(order) AS io_id, record::id(screen) AS screen_id, fn::iso(starts_at) AS starts_at,
-              fn::iso(ends_at) AS ends_at, cant_slots, order.number AS io_number, order.brand AS brand,
-              order.status AS status, fn::iso(order.created_at) AS created_at, fn::iso(order.reservation_expires_at) AS reservation_expires_at
-       FROM io_line WHERE store = type::record('sys_store', $store) ${scope}
-         AND starts_at < <datetime> $to AND ends_at > <datetime> $from`,
+  // Las líneas viajan SIN joins (`order.*` por línea costaba ~220 ms con 14 000 líneas); sus órdenes se leen
+  // una vez por id (SurrealDB 4 resuelve `id IN [...]` por clave) en el mismo viaje y se unen en JS.
+  const [{ lines: rawLines, orders }, books] = await Promise.all([
+    surql<{ lines: Array<Record<string, unknown>>; orders: Array<Record<string, unknown>> }>(
+      `${idsLet}
+       LET $ln = SELECT record::id(order) AS io_id, order AS o, record::id(screen) AS screen_id, ${iso("starts_at")} AS starts_at,
+              ${iso("ends_at")} AS ends_at, cant_slots
+         FROM io_line WHERE store = type::record('sys_store', $store) ${scope}
+           AND starts_at < <datetime> $to AND ends_at > <datetime> $from;
+       LET $oids = array::distinct($ln.map(|$l| $l.o));
+       RETURN {
+         lines: $ln.map(|$l| { io_id: $l.io_id, screen_id: $l.screen_id, starts_at: $l.starts_at, ends_at: $l.ends_at, cant_slots: $l.cant_slots }),
+         orders: SELECT record::id(id) AS id, number AS io_number, brand, status, ${iso("reservation_expires_at")} AS reservation_expires_at
+           FROM io_order WHERE id IN $oids
+       };`,
       vars,
     ),
     surql<Array<Record<string, unknown>>>(
-      `${idsLet} SELECT record::id(slot.screen) AS screen_id, fn::key(order) AS io_id, order.number AS io_number, order.brand AS brand,
-              fn::iso(starts_at) AS starts_at, fn::iso(ends_at) AS ends_at, status
+      `${idsLet} SELECT record::id(slot.screen) AS screen_id, ${key("order")} AS io_id, order.number AS io_number, order.brand AS brand,
+              ${iso("starts_at")} AS starts_at, ${iso("ends_at")} AS ends_at, status
        FROM inv_booking WHERE store = type::record('sys_store', $store) ${bookScope} AND status != 'cancelled'
          AND starts_at < <datetime> $to AND ends_at > <datetime> $from`,
       vars,
     ),
   ]);
+  const orderById = new Map(orders.map((o) => [String(o.id), o]));
+  const lines: Array<Record<string, unknown>> = rawLines.map((l) => {
+    const o = orderById.get(String(l.io_id));
+    return { ...l, io_number: o?.io_number, brand: o?.brand, status: o?.status, reservation_expires_at: o?.reservation_expires_at };
+  });
+  // `dayOf` (Intl) cuesta ~10 µs: muchas líneas comparten inicio/fin, se resuelve una vez por instante.
+  const dayNumCache = new Map<string, number>();
+  const dayNum = (instant: string): number => {
+    let n = dayNumCache.get(instant);
+    if (n === undefined) dayNumCache.set(instant, (n = isoDayToNum(dayOf(instant, tz))));
+    return n;
+  };
   for (const l of lines) {
     if (excluded && String(l.io_id ?? "") === excluded) continue;
     if (l.status === "cancelled") continue;
@@ -179,8 +226,8 @@ async function loadAvailabilityGrid(
     if (!id) continue;
     const qtyRaw = Number(l.cant_slots ?? 1);
     const qty = Number.isFinite(qtyRaw) && qtyRaw >= 1 ? Math.floor(qtyRaw) : 1;
-    const s = Math.max(isoDayToNum(dayOf(String(l.starts_at), tz)), fromNum);
-    const e = Math.min(isoDayToNum(dayOf(String(l.ends_at), tz)), toNumExcl);
+    const s = Math.max(dayNum(String(l.starts_at)), fromNum);
+    const e = Math.min(dayNum(String(l.ends_at)), toNumExcl);
     const isHold = l.status === "draft";
     for (let d = s; d < e; d++) {
       add(id, d, qty);
@@ -196,8 +243,8 @@ async function loadAvailabilityGrid(
     if (excluded && b.io_id != null && String(b.io_id) === excluded) continue;
     const screenId = String(b.screen_id ?? "");
     if (!screenId) continue;
-    const s = Math.max(isoDayToNum(dayOf(String(b.starts_at), tz)), fromNum);
-    const e = Math.min(isoDayToNum(dayOf(String(b.ends_at), tz)), toNumExcl);
+    const s = Math.max(dayNum(String(b.starts_at)), fromNum);
+    const e = Math.min(dayNum(String(b.ends_at)), toNumExcl);
     const isHold = String(b.status ?? "") === "hold";
     for (let d = s; d < e; d++) {
       add(screenId, d, 1);

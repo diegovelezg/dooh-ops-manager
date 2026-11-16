@@ -3,7 +3,8 @@ import { commercialState, isAuthorized, materialsCovered, deliveriesCovered, sup
 // Lecturas de órdenes sobre SurrealDB. La etapa se deriva en JS
 // con orderStage: volumen bajo (<200), sin paginación exacta que mentir.
 import { getStoreTimeZone } from "@/lib/stores-db";
-import { getOrder, listChildrenOf, listChildrenOfOne, listOrderRows } from "@/lib/orders-store";
+import { getOrder, listChildrenOf, listChildrenOfOne } from "@/lib/orders-store";
+import { groupByIo, readOrderBundle } from "@/lib/order-reads";
 import { listCompanies, listContactsWithCompany } from "@/lib/crm-store";
 import { listScreensBrief } from "@/lib/screens-store";
 import { joinHaystack, matchScore, matchTokens, normalizeSearch, tokenizeSearch } from "@/lib/search-text";
@@ -43,33 +44,19 @@ export async function listOrders(
   storeId: string,
   opts: { q?: string; stage?: OrderStageKey | null; billing?: BillingStatusKey | null } = {},
 ): Promise<OrderRow[]> {
-  const allRows = await listOrderRows(storeId);
+  // Una ronda paralela de lecturas lean (`order-reads`); el resto es derivación en memoria, indexada por orden.
+  const { tz, orders: allRows, lines, oms, creatives, photos, purchases, deliveries, invoices } =
+    await readOrderBundle(storeId, { live: false, order: "DESC" });
   if (allRows.length === 0) return [];
 
-  // Nombres primero: el filtro fuzzy cruza IO + marca + anunciante + facturación.
-  const preIds = [
-    ...new Set(
-      allRows.flatMap((r) => [r.advertiser_company_id, r.billing_company_id].filter(Boolean)).map(String),
-    ),
-  ];
-  const nameByPre = new Map<string, string>();
-  if (preIds.length > 0) {
-    for (const c of await listCompanies(storeId, preIds)) {
-      nameByPre.set(String(c.id), String(c.name ?? ""));
-    }
-  }
   // Fuzzy en JS (etapa y cobro se derivan aquí): tildes, multi-token y ranking.
+  // El haystack cruza IO + marca + anunciante + facturación (los nombres vienen en la fila de la orden).
   const tokens = tokenizeSearch(opts.q ?? "");
   const qNorm = normalizeSearch(opts.q ?? "");
   const ranked = allRows
     .map((r) => {
       if (tokens.length === 0) return { r, score: 0 };
-      const hay = joinHaystack([
-        r.io_number,
-        r.brand,
-        nameByPre.get(String(r.advertiser_company_id ?? "")),
-        nameByPre.get(String(r.billing_company_id ?? "")),
-      ]);
+      const hay = joinHaystack([r.io_number, r.brand, r.advertiser_name, r.billing_name]);
       if (!matchTokens(hay, tokens)) return { r, score: -1 };
       return { r, score: matchScore(hay, tokens, qNorm) };
     })
@@ -78,52 +65,35 @@ export async function listOrders(
   // Con búsqueda: relevancia primero (estable: conserva fecha dentro del score).
   if (tokens.length > 0) ranked.sort((a, b) => b.score - a.score);
   const rows = ranked.map((s) => s.r);
-  const ids = rows.map((r) => String(r.id));
 
-  // Hijas: fail-closed — cualquier hija caída lanza (nunca 0 silencioso).
-  const { lines, oms, creatives: creas, photos, invoices: invs } = await listChildrenOf(storeId, ids);
-  // Nombres ya resueltos arriba para el filtro (mismo mapa).
-  const nameBy = nameByPre;
-  const linesBy = new Map<string, { n: number; gross: number }>();
-  for (const l of lines) {
-    const k = String(l.io_id);
-    const prev = linesBy.get(k) ?? { n: 0, gross: 0 };
-    prev.n += 1;
-    prev.gross += Number(l.rate_minor ?? 0);
-    linesBy.set(k, prev);
-  }
-  const workflow = await workflowRows(storeId, ids);
-  const invBy = new Map<string, Array<Record<string, unknown>>>();
-  for (const v of invs) {
-    const k = String(v.io_id);
-    const arr = invBy.get(k) ?? [];
-    arr.push(v);
-    invBy.set(k, arr);
-  }
+  const linesOf = groupByIo(lines), omsOf = groupByIo(oms), creasOf = groupByIo(creatives);
+  const purchasesOf = groupByIo(purchases), deliveriesOf = groupByIo(deliveries), photosOf = groupByIo(photos);
+  const invOf = groupByIo(invoices);
 
-  const tz = await getStoreTimeZone(storeId);
   const t = now();
   const out: OrderRow[] = rows.map((r) => {
     const id = String(r.id);
-    const timing = orderTiming(r, (lines).filter((l) => l.io_id === id), t, tz);
-    const ownLines = lines.filter(l => l.io_id === id);
-    const authorized = isAuthorized(r, oms.filter(d => d.io_id === id));
+    const ownLines = linesOf.get(id) ?? [];
+    const timing = orderTiming(r, ownLines, t, tz);
+    const authorized = isAuthorized(r, omsOf.get(id) ?? []);
+    const ownPurchases = purchasesOf.get(id) ?? [];
     const { index, stage } = orderStage({
       status: (r.status as string | null) ?? null,
       signed: r.status === "signed",
       hasOm: authorized,
-      materialsOk: materialsCovered(ownLines, creas.filter(c => c.io_id === id)) && ownLines.every(l => supplierConfirmed(l, workflow.purchases)),
+      materialsOk: materialsCovered(ownLines, creasOf.get(id) ?? []) && ownLines.every((l) => supplierConfirmed(l, ownPurchases)),
       ...timing,
-      certified: deliveriesCovered(ownLines, workflow.deliveries, photos),
+      certified: deliveriesCovered(ownLines, deliveriesOf.get(id) ?? [], photosOf.get(id) ?? []),
     });
-    const agg = linesBy.get(id) ?? { n: 0, gross: 0 };
-    const invRows = invBy.get(id) ?? [];
+    let gross = 0;
+    for (const l of ownLines) gross += Number(l.rate_minor ?? 0);
+    const invRows = invOf.get(id) ?? [];
     // Solo facturas con moneda explícita igual a la IO: null NUNCA hereda
     // (una USD sin moneda no se suma como PEN).
     const orderCurrency = normalizeCurrency(r.currency ?? "PEN", "PEN");
     const invSameCurrency = invRows.filter((v) => invoiceMatchesOrder(v.currency, orderCurrency));
     const bill = billingStatus({
-      gross_minor: agg.gross,
+      gross_minor: gross,
       invoices: invSameCurrency.map(toBillingInvoice),
       starts_at: (r.starts_at as string | null) ?? null,
       payment_terms_days:
@@ -133,16 +103,16 @@ export async function listOrders(
     });
     return {
       id,
-      commercial_state: commercialState(r,t),
+      commercial_state: commercialState(r, t),
       io_number: String(r.io_number ?? ""),
       brand: (r.brand as string | null) ?? null,
       status: String(r.status ?? ""),
       starts_at: (r.starts_at as string | null) ?? null,
       ends_at: (r.ends_at as string | null) ?? null,
-      advertiser_name: r.advertiser_company_id ? (nameBy.get(String(r.advertiser_company_id)) ?? null) : null,
-      billing_name: r.billing_company_id ? (nameBy.get(String(r.billing_company_id)) ?? null) : null,
-      lines_count: agg.n,
-      gross_minor: agg.gross,
+      advertiser_name: (r.advertiser_name as string | null) ?? null,
+      billing_name: (r.billing_name as string | null) ?? null,
+      lines_count: ownLines.length,
+      gross_minor: gross,
       currency: orderCurrency,
       stage,
       stage_index: index,

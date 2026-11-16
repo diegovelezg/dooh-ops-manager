@@ -17,7 +17,8 @@ import {
 import { FilterSearch } from "@/components/filter-search";
 import { BrandPautaBadge } from "@/components/badges";
 import { Money } from "@/components/money";
-import { formatNumber } from "@/lib/format";
+import { formatDate, formatNumber } from "@/lib/format";
+import { useTz } from "@/components/tenant-time";
 import type { BrandsSortDir, BrandsSortKey, BrandRow } from "@/lib/brand-db";
 import { MarcaDrawer } from "./marca-drawer";
 import { EntityCount, EntityEmpty, useEntitySelection } from "@/components/entity-list";
@@ -37,6 +38,7 @@ export function BrandsList({
   initialSelectedBrand?: string | null;
 }) {
   const router = useRouter();
+  const tz = useTz();
   const [isPending, startTransition] = useTransition();
   // Prefetch del detalle al hover/foco (mismo patrón que orders-list).
   const prefetched = useRef(new Set<string>());
@@ -175,7 +177,7 @@ export function BrandsList({
                   <Money amountMinor={r.total_minor} currency="PEN" />
                 </DataTableTd>
                 <DataTableTd className="px-3 py-4 text-[13px] text-muted-foreground tabular-nums">
-                  {r.last_end ?? <span className="text-muted-foreground/60">—</span>}
+                  {r.last_end ? formatDate(r.last_end, tz) : <span className="text-muted-foreground/60">—</span>}
                 </DataTableTd>
                 <DataTableTd numeric className="px-3 py-4 tabular-nums">
                   <AppTooltip tip={r.screens.join(", ") || "Sin pantallas"}>

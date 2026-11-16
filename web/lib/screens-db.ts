@@ -6,6 +6,7 @@
 // ranking, tolerancia a tildes/typos y paginación real con total exacto.
 import { surql } from "@/lib/surreal";
 import { SCREENS_SORT_ALIASES } from "@/lib/sort";
+import { matchAll, matchScore, norm } from "@/lib/search-sql";
 
 export interface ScreenListRow {
   id: string;
@@ -52,6 +53,8 @@ export interface ScreensFilter {
   sortDir?: ScreensSortDir;
   page?: number;
   pageSize?: number;
+  /** Todas las que calcen (hasta `ALL_MAX`), sin paginar: la matriz de ocupación necesita todas las pantallas. */
+  all?: boolean;
 }
 
 function num(v: unknown): number | null {
@@ -82,48 +85,67 @@ function mapRow(r: Record<string, unknown>): ScreenListRow {
 }
 
 /** Orden por clave; los nulos van al final (como `nulls last`). */
+// `id ASC` final: desempate determinista (SurrealDB 4 no garantiza el orden de filas empatadas).
 const SCREEN_ORDER: Record<ScreensSortKey, (d: string) => string> = {
-  name: (d) => `name_key ${d}`,
-  supplier: (d) => `supplier_missing ASC, supplier_key ${d}, name_key ASC`,
-  city: (d) => `city_missing ASC, city_key ${d}, name_key ASC`,
-  impact: (d) => `impact_missing ASC, impact_day ${d}, name_key ASC`,
-  price: (d) => `price_missing ASC, price_pen ${d}, name_key ASC`,
+  name: (d) => `name_key ${d}, id ASC`,
+  supplier: (d) => `supplier_missing ASC, supplier_key ${d}, name_key ASC, id ASC`,
+  city: (d) => `city_missing ASC, city_key ${d}, name_key ASC, id ASC`,
+  impact: (d) => `impact_missing ASC, impact_day ${d}, name_key ASC, id ASC`,
+  price: (d) => `price_missing ASC, price_pen ${d}, name_key ASC, id ASC`,
 };
+
+/** Claves de orden de la fase 1 (solo las que usa `SCREEN_ORDER` para esa columna: no se calculan las demás). */
+const SORT_KEYS: Record<ScreensSortKey, string> = {
+  name: `${norm("name")} AS name_key`,
+  supplier: `${norm("name")} AS name_key, ${norm("supplier.name")} AS supplier_key, supplier = NONE AS supplier_missing`,
+  city: `${norm("name")} AS name_key, ${norm("venue.city")} AS city_key, venue.city = NONE AS city_missing`,
+  impact: `${norm("name")} AS name_key, impact_day, impact_day = NONE AS impact_missing`,
+  price: `${norm("name")} AS name_key, price_pen, price_pen = NONE AS price_missing`,
+};
+
+/** Tope de `all`: más allá, el caller debe declarar muestra parcial (`rows.length < total`). */
+export const ALL_MAX = 5000;
 
 export async function listScreens(
   storeId: string,
   opts: ScreensFilter = {},
 ): Promise<{ rows: ScreenListRow[]; total: number; truncated?: boolean }> {
-  const pageSize = Math.min(Math.max(opts.pageSize ?? 20, 1), 100);
-  const page = Math.max(1, opts.page ?? 1);
+  const pageSize = opts.all ? ALL_MAX : Math.min(Math.max(opts.pageSize ?? 20, 1), 100);
+  const page = opts.all ? 1 : Math.max(1, opts.page ?? 1);
   const sortKey = opts.sortKey ?? "name";
   const dir = (opts.sortDir ?? "asc") === "desc" ? "DESC" : "ASC";
   const q = (opts.q ?? "").trim();
   // Con texto y orden por nombre asc manda la relevancia (relevancia primero).
-  const order = q && sortKey === "name" && dir === "ASC" ? "score DESC, name_key ASC" : SCREEN_ORDER[sortKey](dir);
-  const result = await surql<{ total: number; rows: Array<Record<string, unknown>> }>(
+  const order = q && sortKey === "name" && dir === "ASC" ? "score DESC, name_key ASC, id ASC" : SCREEN_ORDER[sortKey](dir);
+  // Dos fases: (1) filtrar y ordenar con columnas mínimas — `search` (COMPUTED: une venue y proveedor por fila)
+  // solo se evalúa si hay texto, y las claves de orden son solo las de la columna elegida; (2) proyectar los
+  // joins (venue.*, supplier.name) SOLO de los ids de la página. El orden se reaplica en JS: sin ORDER BY,
+  // SurrealDB 4 no garantiza el orden de `FROM $ids`.
+  const result = await surql<{ total: number; order: string[]; rows: Array<Record<string, unknown>> }>(
     `LET $tokens = fn::tokens($q);
      LET $qn = fn::norm($q);
      LET $cityKey = IF $city { fn::norm($city) } ELSE { NONE };
-     LET $m = SELECT record::id(id) AS id, name, is_active, width_px, height_px, width_m, height_m, price_pen,
-         impact_day, impressions_day, external_ref,
-         venue.district AS district, venue.city AS city, venue.name AS venue_name,
-         IF supplier { record::id(supplier) } ELSE { NONE } AS supplier_id, supplier.name AS supplier_name,
-         fn::norm(name) AS name_key,
-         fn::norm(supplier.name) AS supplier_key, supplier = NONE AS supplier_missing,
-         fn::norm(venue.city) AS city_key, venue.city = NONE AS city_missing,
-         impact_day = NONE AS impact_missing, price_pen = NONE AS price_missing,
-         fn::match_score(fn::norm(name), search, $qn) AS score
+     -- Venues de la ciudad, UNA vez (un join \`venue.city\` + fn::norm por pantalla es caro; y inlinear la
+     -- subconsulta junto a una fn:: en el WHERE la reevalúa por fila en SurrealDB 4.0.1).
+     LET $cityVenues = IF $cityKey != NONE { SELECT VALUE id FROM inv_venue WHERE store = type::record('sys_store', $store) AND ${norm("city")} = $cityKey } ELSE { [] };
+     LET $m = SELECT id, ${SORT_KEYS[sortKey]}${q ? `, ${matchScore(norm("name"), "search")} AS score` : ""}
        FROM inv_screen
        WHERE store = type::record('sys_store', $store)
          AND ($supplier = NONE OR supplier = type::record('crm_company', $supplier))
          AND ($own = false OR supplier = NONE)
-         AND ($cityKey = NONE OR fn::norm(venue.city) = $cityKey)
+         AND ($cityKey = NONE OR venue IN $cityVenues)
          AND ($active = 'all' OR ($active = 'active' AND is_active = true) OR ($active = 'inactive' AND is_active != true))
-         AND fn::match_all(search, $tokens);
+         ${q ? `AND ${matchAll("search")}` : ""};
+     LET $top = SELECT * FROM $m ORDER BY ${order} LIMIT $limit START $offset;
+     LET $ids = $top.map(|$x| $x.id);
      RETURN {
        total: array::len($m),
-       rows: (SELECT * FROM $m ORDER BY ${order} LIMIT $limit START $offset)
+       order: $ids.map(|$i| record::id($i)),
+       rows: SELECT record::id(id) AS id, name, is_active, width_px, height_px, width_m, height_m, price_pen,
+           impact_day, impressions_day, external_ref,
+           venue.district AS district, venue.city AS city, venue.name AS venue_name,
+           IF supplier { record::id(supplier) } ELSE { NONE } AS supplier_id, supplier.name AS supplier_name
+         FROM $ids
      };`,
     {
       store: storeId,
@@ -136,6 +158,8 @@ export async function listScreens(
       offset: (page - 1) * pageSize,
     },
   );
+  const at = new Map(result.order.map((id, i) => [id, i]));
+  result.rows.sort((a, b) => (at.get(String(a.id)) ?? 0) - (at.get(String(b.id)) ?? 0));
   return { rows: result.rows.map(mapRow), total: result.total };
 }
 
