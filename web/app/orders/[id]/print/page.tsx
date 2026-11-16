@@ -13,7 +13,7 @@ import {
   displayEndOfSafe,
   formatDate,
   formatDateTime,
-  formatMoney,
+  formatMoneyParts,
   formatNumber,
   paymentTermsLabel,
   splitIgv,
@@ -48,8 +48,8 @@ export async function generateMetadata({
 }
 
 const STATUS_LABEL: Record<string, string> = {
-  draft: "Borrador",
-  signed: "Firmada",
+  draft: "Cotización",
+  signed: "Confirmada",
   cancelled: "Cancelada",
 };
 
@@ -57,9 +57,17 @@ function str(v: unknown): string {
   return typeof v === "string" && v ? v : "—";
 }
 
-function money(minor: unknown, currency: string): string {
+/** Mismo tratamiento que `<Money>` de la web: código ISO más pequeño, gris y sin negrita. */
+function money(minor: unknown, currency: string): React.ReactNode {
   const n = Number(minor);
-  return Number.isFinite(n) ? formatMoney(n, currency, 2) : "—";
+  if (!Number.isFinite(n)) return "—";
+  const { code, body } = formatMoneyParts(n, currency);
+  return (
+    <span style={{ whiteSpace: "nowrap" }}>
+      <span style={{ fontSize: "0.7em", fontWeight: 400, color: "#555", letterSpacing: "0.02em", marginRight: "0.35em" }}>{code}</span>
+      {body}
+    </span>
+  );
 }
 
 /** GET visual: /orders/:id/print — Nota de Pedido lista para "Exportar
@@ -153,7 +161,6 @@ export default async function OrderPrintPage({
   const pocName = pocRef?.name ?? null;
   const pocPhone = pocRef?.phone ?? null;
   const pocEmail = pocRef?.email ?? null;
-  const hasContact = Boolean(billingAddress || pocName || pocPhone || pocEmail);
   const signerRef = snapContacts?.signer ?? detail.contacts.signer;
   const signerName = signerRef?.name ?? null;
   const signerRole = signerRef?.role ?? null;
@@ -165,17 +172,15 @@ export default async function OrderPrintPage({
   // Sin responsable si la intermediaria es el contratante.
   const orderAgencyId = typeof o.agency_company_id === "string" && o.agency_company_id ? o.agency_company_id : null;
   const orderBillingId = typeof o.billing_company_id === "string" && o.billing_company_id ? o.billing_company_id : null;
-  const hideManager = !!orderAgencyId && orderAgencyId === orderBillingId;
-  const hasSigners = Boolean(
-    signerName ||
-      signerRole ||
-      signerEmail ||
-      (!hideManager && (managerName || managerRole || managerEmail)),
-  );
   const paymentLink = snapContacts?.payment ?? detail.contacts.payment;
   const paymentLine = paymentLink
     ? [paymentLink.name, paymentLink.email].filter(Boolean).join(" ")
     : null;
+  const billingKindLabel =
+    detail.billing_kind === "agencia" ? "Agencia" : detail.billing_kind === "anunciante" ? "Anunciante" : null;
+  const billingDocLabel = o.doc_orden_medios === true ? "Orden de Medios" : o.doc_orden_compra === true ? "Orden de Compra" : o.doc_contrato === true ? "Contrato" : null;
+  const agencyIsContratante = hasIntermediary && !!orderAgencyId && orderAgencyId === orderBillingId;
+  const contactLine = (...parts: Array<string | null>): string => parts.filter(Boolean).join(" · ") || "—";
   const now = formatDateTime(new Date().toISOString(), tz);
   const moneyLabel =
     currency === "PEN"
@@ -214,11 +219,11 @@ export default async function OrderPrintPage({
             letterSpacing: "0.02em",
           }}
         >
-          Nota de pedido de alquiler y producción de publicidad
+          Nota de pedido de alquiler de espacios de publicidad
         </h1>
         {isDraft && (
           <p style={{ margin: "4px 0 0", fontSize: "12px", fontWeight: 600 }}>
-            Borrador previo a la firma — no válido como comprobante.
+            Cotización pendiente de confirmación — no válida como comprobante.
           </p>
         )}
         <dl style={{ display: "flex", gap: "24px", margin: "8px 0 0" }}>
@@ -229,7 +234,13 @@ export default async function OrderPrintPage({
             </dd>
           </div>
           <div>
-            <dt style={headDt}>Cliente / Marca </dt>
+            <dt style={headDt}>Anunciante </dt>
+            <dd style={{ display: "inline", margin: 0, fontWeight: 600 }}>
+              {advertiser}
+            </dd>
+          </div>
+          <div>
+            <dt style={headDt}>Marca </dt>
             <dd style={{ display: "inline", margin: 0, fontWeight: 600 }}>
               {brand}
             </dd>
@@ -237,69 +248,41 @@ export default async function OrderPrintPage({
         </dl>
       </header>
 
-      <NpSection n="I" title="Acuerdo de servicios de alquiler y producción">
+      <NpSection n="I" title="Anunciante">
         <NpGrid
           rows={[
-            ["Razón social", advertiser],
+            ["Anunciante", advertiser],
             ["Marca", brand],
-            ["Tipo de moneda", moneyLabel],
-            ...(hasSigners
-              ? ([
-                  ["Firmante", signerName ?? "—"],
-                  ["Cargo del firmante", signerRole ?? "—"],
-                  ["Correo del firmante", signerEmail ?? "—"],
-                  ...(!hideManager
-                    ? ([
-                        ["Persona responsable", managerName ?? "—"],
-                        ["Cargo del responsable", managerRole ?? "—"],
-                        ["Correo del responsable", managerEmail ?? "—"],
-                      ] as Array<[string, React.ReactNode]>)
-                    : []),
-                ] as Array<[string, React.ReactNode]>)
-              : []),
           ]}
         />
       </NpSection>
 
-      <NpSection n="II" title="Datos del cliente a facturar">
+      <NpSection n="II" title="Contratante">
         <NpGrid
           rows={[
-            ["Razón social", billing],
+            ["Razón social", billing + (billingKindLabel ? ` · ${billingKindLabel}` : "")],
             [fiscalLabel, billingTax ?? "—"],
             ["Ciudad", cityLine || "—"],
             ["Dirección", billingAddress ?? "—"],
-            ...(hasContact
-              ? ([
-                  ["Persona de contacto", pocName ?? "—"],
-                  ["Teléfono", pocPhone ?? "—"],
-                  ["Correo electrónico", pocEmail ?? "—"],
-                ] as Array<[string, React.ReactNode]>)
-              : []),
+            ["Contacto contratante", contactLine(pocName, pocPhone, pocEmail)],
+            ["Firmante", contactLine(signerName, signerRole, signerEmail)],
+            ["Condición de pago", terms],
+            ["Moneda", moneyLabel],
           ]}
         />
       </NpSection>
 
-      <NpSection n="III" title="Condiciones de facturación">
+      <NpSection n="III" title="Facturación">
         <NpGrid
           rows={[
             [
               "Documento para facturación",
-              <>
-                {o.doc_orden_medios === true ? <b>(X)</b> : "( )"} Orden
-                Medios · {o.doc_orden_compra === true ? <b>(X)</b> : "( )"}{" "}
-                Orden de Compra ·{" "}
-                {o.doc_contrato === true ? <b>(X)</b> : "( )"} Contrato
-              </>,
+              billingDocLabel ?? "—",
             ],
-            [
-              `Valor total del contrato (sin ${taxName})`,
-              gross > 0 ? `${money(net, currency)} ${currency}` : "—",
-            ],
-            ["Condición de pago", terms],
-            ["Correo electrónico y/o portal", txt(o.billing_portal_email) ?? "—"],
+            ["Indicaciones para facturación", txt(o.billing_detail) ?? "—"],
+            ["Observaciones para registro de factura", txt(o.invoice_registration) ?? "—"],
             ["Contacto de pago", paymentLine ?? "—"],
-            ["Detalle de facturación", txt(o.billing_detail) ?? "—"],
-            ["Registro de factura", txt(o.invoice_registration) ?? "—"],
+            ["Correo electrónico y/o portal", txt(o.billing_portal_email) ?? "—"],
           ]}
         />
       </NpSection>
@@ -307,35 +290,25 @@ export default async function OrderPrintPage({
       <NpSection n="IV" title="Intermediario">
         <NpGrid
           rows={[
-            [
-              "Agencia / central de medios",
-              hasIntermediary ? (
-                <>
-                  <b>(X)</b> Sí · ( ) No
-                </>
-              ) : (
-                <>
-                  ( ) Sí · <b>(X)</b> No
-                </>
-              ),
-            ],
+            ["Agencia / central de medios", hasIntermediary ? "Sí" : "No"],
             ...(hasIntermediary
               ? ([
-                  ["Razón social", toTitleCase(linkedAgencyName)],
-                  [taxIdLabel(detail.agency_country ?? billingCountry), linkedAgencyTax ?? "—"],
+                  ["Empresa intermediaria", toTitleCase(linkedAgencyName) + (agencyIsContratante ? " · es el contratante" : "")],
+                  ...(agencyIsContratante
+                    ? []
+                    : ([
+                        [taxIdLabel(detail.agency_country ?? billingCountry), linkedAgencyTax ?? "—"],
+                        ["Persona responsable", contactLine(managerName, managerRole, managerEmail)],
+                      ] as Array<[string, React.ReactNode]>)),
                 ] as Array<[string, React.ReactNode]>)
               : []),
           ]}
         />
       </NpSection>
 
-      <NpSection n="V" title="Tipo de contrato">
-        <p style={{ margin: 0 }}>Alquiler de espacio publicitario.</p>
-      </NpSection>
-
       <NpSection
-        n="VI"
-        title={`Detalle de alquiler de espacios de publicidad (${formatNumber(lines.length)})`}
+        n="V"
+        title={`Pantallas (${formatNumber(lines.length)})`}
       >
         {lines.length === 0 ? (
           <p style={{ margin: 0, color: "#555" }}>
@@ -353,23 +326,20 @@ export default async function OrderPrintPage({
               <thead>
                 <tr>
                   {[
-                    "Distrito",
-                    "Cod.",
-                    "Elemento",
+                    "Pantalla",
                     "Ubicación",
-                    "Fecha inicio",
-                    "Fecha fin",
-                    "Cant. días",
+                    "Periodo",
+                    `Precio/día (${currency})`,
+                    "Días",
                     "Slots",
-                    "Total",
-                  ].map((h, i) => (
+                    `Subtotal (${currency})`,
+                  ].map((h, i, all) => (
                     <th
                       key={h}
-                      align={i >= 6 ? "right" : "left"}
+                      align={i >= all.length - 4 ? "right" : "left"}
                       style={{
                         borderBottom: "1px solid #111",
                         padding: "6px 6px",
-                        whiteSpace: "nowrap",
                       }}
                     >
                       {h}
@@ -389,23 +359,28 @@ export default async function OrderPrintPage({
                             : null,
                           fin,
                         );
+                  const slots = typeof l.cant_slots === "number" && l.cant_slots >= 1 ? l.cant_slots : 1;
+                  const perDay = dd && dd > 0 ? Math.round(Number(l.rate_minor) / (dd * slots)) : null;
+                  const place = [l.screen_venue, l.screen_district].map(txt).filter(Boolean).join(" · ");
                   return (
                     <tr key={String(l.id)}>
-                      <td style={cell}>{str(l.screen_district)}</td>
-                      <td style={cell}>{str(l.screen_code)}</td>
-                      <td style={cell}>{str(l.screen_technology)}</td>
-                      <td style={cell}>{str(l.screen_venue)}</td>
-                      <td style={{ ...cell, whiteSpace: "nowrap" }}>
-                        {formatDate(l.starts_at, tz)}
+                      <td style={cell}>
+                        <b>{str(l.screen_name)}</b>
+                        {txt(l.screen_code) && <div style={{ color: "#555", fontSize: "10px" }}>{txt(l.screen_code)}</div>}
                       </td>
-                      <td style={{ ...cell, whiteSpace: "nowrap" }}>
-                        {fin ? formatDate(fin, tz) : "—"}
+                      <td style={cell}>{place || "—"}</td>
+                                              <td style={{ ...cell, whiteSpace: "nowrap" }}>
+                          {formatDate(l.starts_at, tz)} → {fin ? formatDate(fin, tz) : "—"}
+                        </td>
+
+                      <td align="right" style={{ ...cell, whiteSpace: "nowrap" }}>
+                        {perDay !== null ? money(perDay, currency) : "—"}
                       </td>
                       <td align="right" style={cell}>
                         {dd ?? "—"}
                       </td>
                       <td align="right" style={cell}>
-                        {typeof l.cant_slots === "number" && l.cant_slots >= 1 ? l.cant_slots : 1}
+                        {slots}
                       </td>
                       <td align="right" style={{ ...cell, whiteSpace: "nowrap" }}>
                         {money(l.rate_minor, currency)}
@@ -424,42 +399,26 @@ export default async function OrderPrintPage({
                 margin: "8px 0 0",
               }}
             >
-              <NpTotal
-                label={`Total sin ${taxName}`}
-                value={`${money(net, currency)} ${currency}`}
-              />
-              <NpTotal
-                label={`${taxName} (${taxPct} %)`}
-                value={`${money(igv, currency)} ${currency}`}
-              />
-              <NpTotal
-                label="Total"
-                value={`${money(total, currency)} ${currency}`}
-                strong
-              />
+              <NpTotal label={`Total sin ${taxName}`} value={money(net, currency)} />
+              <NpTotal label={`${taxName} (${taxPct} %)`} value={money(igv, currency)} />
+              <NpTotal label="Total" value={money(total, currency)} strong />
             </dl>
           </>
         )}
       </NpSection>
 
-      <NpSection n="VII" title="Detalle de servicios de producción">
-        <p style={{ margin: 0 }}>
-          Esta nota no incluye servicios de producción.
-        </p>
-      </NpSection>
-
-      <NpSection n="VIII" title="Condiciones del servicio">
+      <NpSection n="VI" title="Condiciones del servicio">
         <p style={{ margin: 0 }}>
           {txt(frozenTerms ? frozenTerms.service_clauses : o.service_clauses) ??
             `${storeName} podrá reubicar la pauta por fuerza mayor, siempre y cuando el cliente esté conforme con la reubicación. Todo arte pasa por aprobación de ${storeName}.`}
         </p>
       </NpSection>
 
-      <NpSection n="IX" title="Observaciones">
-        <p style={{ margin: 0 }}>{notes ?? "Sin observaciones."}</p>
+      <NpSection n="VII" title="Notas">
+        <p style={{ margin: 0 }}>{notes ?? "Sin notas."}</p>
       </NpSection>
 
-      <NpSection n="X" title="Firmas" last>
+      <NpSection n="VIII" title="Firmas" last>
         <div
           style={{
             display: "grid",
@@ -469,7 +428,8 @@ export default async function OrderPrintPage({
           }}
         >
           <div>
-            <p style={{ fontWeight: 700, margin: "0 0 44px" }}>Cliente</p>
+            <p style={{ fontWeight: 700, margin: "0 0 2px" }}>{billing}</p>
+            <p style={{ margin: "0 0 40px", color: "#555" }}>{signerName ?? "Firmante"}{signerRole ? ` · ${signerRole}` : ""}</p>
             <p style={{ margin: 0, color: "#555" }}>
               Firma:{" "}
               <span aria-hidden style={signLine}>
@@ -478,7 +438,8 @@ export default async function OrderPrintPage({
             </p>
           </div>
           <div>
-            <p style={{ fontWeight: 700, margin: "0 0 44px" }}>{storeName}</p>
+            <p style={{ fontWeight: 700, margin: "0 0 2px" }}>{storeName}</p>
+            <p style={{ margin: "0 0 40px", color: "#555" }}>&nbsp;</p>
             <p style={{ margin: 0, color: "#555" }}>
               Firma:{" "}
               <span aria-hidden style={signLine}>
@@ -585,7 +546,7 @@ function NpTotal({
   strong,
 }: {
   label: string;
-  value: string;
+  value: React.ReactNode;
   strong?: boolean;
 }) {
   return (
