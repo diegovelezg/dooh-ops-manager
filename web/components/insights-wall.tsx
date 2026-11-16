@@ -197,6 +197,11 @@ function InsightCard({ insight }: { insight: WallInsight }) {
           </Link>
         ))}
         <span className="ms-auto" />
+        {insight.assignee && (
+          <span className="truncate text-xs text-muted-foreground" title="Responsable de la orden">
+            Asignada a <span className="font-medium text-foreground">{insight.assignee}</span>
+          </span>
+        )}
         {mentions.length > 0 ? (
           <AppTooltip tip={mentions.join("  ")}>
             <span

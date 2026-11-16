@@ -14,6 +14,8 @@ import { Money } from "@/components/money";
 import { OrderApprovalBadge, OrderAutorizadaBadge, OrderBillingBadge, OrderInvoiceBadge, OrderStageBadge } from "@/components/order-badges";
 import { orderStageDisplay } from "@/lib/ui-badges";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { runOrderWorkflowAction } from "@/lib/order-workflow-actions";
 import { Label } from "@/components/ui/label";
 import {
   Dialog,
@@ -72,6 +74,8 @@ import { useTz } from "@/components/tenant-time";
 interface Detail {
   readiness: { authorized: boolean; materials: boolean; certified: boolean };
   order: Record<string, unknown>;
+  /** Emails del equipo (candidatos a responsable). */
+  members?: string[];
   advertiser_name: string | null;
   billing_name: string | null;
   billing_kind: string | null;
@@ -320,6 +324,18 @@ export function OrdenDrawer({ orderId, myRole, onClose }: { orderId: string; myR
     });
   };
 
+  const doAssign = (email: string) => {
+    startTransition(async () => {
+      const res = await runOrderWorkflowAction({
+        orderId,
+        revision: Number(detail?.order.workflow_rev ?? 0),
+        command: { kind: "assign", email },
+      });
+      toast.add({ title: res.ok ? "Responsable asignado" : "No se pudo asignar", description: res.message, type: res.ok ? "success" : "error" });
+      if (res.ok) await load();
+    });
+  };
+
   const doCancelOrder = () => {
     startTransition(async () => {
       const res = await cancelOrderAction({ orderId });
@@ -461,9 +477,9 @@ export function OrdenDrawer({ orderId, myRole, onClose }: { orderId: string; myR
       description={o ? [contratante ? toTitleCase(contratante) : null, brand ? toTitleCase(brand) : null].filter(Boolean).join(" · ") || "—" : "Cargando…"}
       badges={
         st && (
-          <span className="flex flex-wrap items-center gap-1.5" aria-label={`Etapa ${orderStageDisplay(st.stage, isDraft).label}${oms.length > 0 ? ", autorizada" : ""}${bill ? `, cobro ${BILLING_LABELS[bill.status]}` : ""}`}>
+          <span className="flex flex-wrap items-center gap-1.5" aria-label={`Etapa ${orderStageDisplay(st.stage, isDraft).label}${detail?.readiness.authorized === true && st.stage !== "cancelada" ? ", autorizada" : ""}${bill ? `, cobro ${BILLING_LABELS[bill.status]}` : ""}`}>
             <OrderStageBadge stage={st.stage} isDraft={isDraft} commercialState={o ? commercialState(o,nowMs) : undefined} />
-            {oms.length > 0 && st.stage !== "cancelada" && <OrderAutorizadaBadge />}
+            {detail?.readiness.authorized === true && st.stage !== "cancelada" && <OrderAutorizadaBadge />}
             {bill && <OrderBillingBadge status={bill.status} prepaid={bill.isPrepaid} prefixed />}
             {(canEditRole || canDelete) && (
               <span className="ms-auto flex items-center gap-1">
@@ -616,6 +632,27 @@ export function OrdenDrawer({ orderId, myRole, onClose }: { orderId: string; myR
                   <EditButton onEdit={() => setEditingFicha(true)} />
                 )}
               </span>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <span className="text-xs text-muted-foreground">Responsable</span>
+              {(() => {
+                const current = typeof o.responsible_email === "string" ? o.responsible_email : "";
+                const team = detail?.members ?? [];
+                const emails = current && !team.includes(current) ? [current, ...team] : team;
+                return canEdit ? (
+                  <Select
+                    value={current || null}
+                    onValueChange={(v) => { if (v && v !== current) doAssign(v); }}
+                    items={Object.fromEntries(emails.map((e) => [e, e]))}
+                    disabled={isPending}
+                  >
+                    <SelectTrigger size="sm" aria-label="Responsable de la orden"><SelectValue placeholder="Sin asignar" /></SelectTrigger>
+                    <SelectContent>{emails.map((e) => <SelectItem key={e} value={e}>{e}</SelectItem>)}</SelectContent>
+                  </Select>
+                ) : (
+                  <span className="font-medium">{current || "Sin asignar"}</span>
+                );
+              })()}
             </div>
             <AppCard title="Contratante" aria-label="Contratante de la orden" tone="sky">
             <dl className="grid gap-x-6 gap-y-4 text-sm sm:grid-cols-2">
@@ -874,7 +911,7 @@ export function OrdenDrawer({ orderId, myRole, onClose }: { orderId: string; myR
 
           <AppCard
             title={`Materiales (${creatives.length})`}
-            description="Adjunta la pieza; queda aprobada y libera la salida al aire."
+            description="Recibe el material por línea; requiere revisión técnica y de contenido en la ficha."
             action={
               canEdit && creatives.length > 0 ? (
                 <AttachButton placement="card" onAttach={() => router.push(`/orders/${orderId}#materiales`)} disabled={isPending} />
@@ -1159,7 +1196,6 @@ export function OrdenDrawer({ orderId, myRole, onClose }: { orderId: string; myR
         </DialogContent>
       </Dialog>
 
-      <div className="border-t p-4"><Button render={<Link href={`/orders/${orderId}`} />} nativeButton={false}>Abrir ficha completa de la orden</Button></div>
       <Dialog open={signOpen} onOpenChange={(v) => !v && setSignOpen(false)}>
         <DialogContent className="w-auto max-w-[calc(100%-2rem)] sm:min-w-[420px]">
           <DialogHeader>

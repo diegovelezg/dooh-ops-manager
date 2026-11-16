@@ -3,7 +3,7 @@
 // LLM (brief_narrate, con metering en ai_llm_usage). Sin swarm, sin auto-envíos,
 // sin scoring probabilístico. Anti-ruido: máx 5/día, dedupe por (kind+scope),
 // silencio si sin cambios.
-import { insertInsights, listInsightKeysSince, listInsights, readInsightIds, restoreInsight as restoreInsightRead } from "@/lib/insights-store";
+import { insertInsights, listInsightKeysSince, listInsights, orderAssignees, readInsightIds, restoreInsight as restoreInsightRead } from "@/lib/insights-store";
 import { listCompanies } from "@/lib/crm-store";
 import { orderIdsWithPhotos, selectLines, selectOrders } from "@/lib/orders-store";
 import type { DashboardSnapshot } from "@/lib/dashboard";
@@ -174,6 +174,8 @@ export interface WallInsight {
   createdAt: string;
   dismissed: boolean;
   mine: boolean;
+  /** Responsable de la orden del aviso (solo avisos con scope=order). */
+  assignee: string | null;
 }
 
 /** Lee el muro del tenant (últimos 20) con dismiss + `mine` resueltos. */
@@ -229,10 +231,12 @@ export async function listWallInsights(
   if (me.userId && list.length > 0) {
     readIds = await readInsightIds(me.userId, list.map((i) => i.id));
   }
+  const assigneeBy = await orderAssignees(storeId, list.filter((i) => i.scopeKind === "order" && i.scopeId).map((i) => String(i.scopeId)));
   return list.map((i) => ({
     ...i,
     dismissed: readIds.has(i.id),
     mine: isMine(i.audience, me),
+    assignee: (i.scopeKind === "order" && i.scopeId ? assigneeBy.get(i.scopeId) : null) ?? null,
   }));
 }
 

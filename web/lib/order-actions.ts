@@ -269,6 +269,8 @@ export async function createOrderAction(form: FormData): Promise<CrmState> {
       payment_terms_days,
       created_by: actor,
       updated_by: actor,
+      // Responsable por defecto = quien la crea (reasignable a cualquiera del equipo).
+      responsible_email: actor?.toLowerCase(),
     };
     // Valida pantallas del tenant antes de insertar.
     const wantedScreens = [...new Set(parsedLines.map((l) => l.screen))];

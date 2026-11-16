@@ -92,3 +92,14 @@ export async function restoreInsight(insightId: string, userId: string): Promise
 export async function latestInsightIds(storeId: string, limit: number): Promise<string[]> {
   return surql<string[]>(`SELECT VALUE record::id(id) FROM sys_insight WHERE store = ${S} ORDER BY created_at DESC LIMIT $limit`, { store: storeId, limit });
 }
+
+/** Responsable (email) por id de orden, de una sola consulta. */
+export async function orderAssignees(storeId: string, orderIds: string[]): Promise<Map<string, string>> {
+  if (orderIds.length === 0) return new Map();
+  const rows = await surql<Array<{ id: string; email: string | null }>>(
+    `LET $r = $ids.map(|$i| type::record('io_order', $i));
+     SELECT record::id(id) AS id, responsible_email AS email FROM io_order WHERE store = ${S} AND id IN $r`,
+    { store: storeId, ids: orderIds },
+  );
+  return new Map(rows.flatMap((r) => (r.email ? [[r.id, r.email] as [string, string]] : [])));
+}

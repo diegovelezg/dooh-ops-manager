@@ -1,4 +1,5 @@
 import { getOrderDetail } from "@/lib/orders-db";
+import { listStoreMembers } from "@/lib/members";
 import { getStore } from "@/lib/stores-db";
 import { requireRouteEntity, resolveMyRole } from "@/lib/api/guard";
 import { apiLog } from "@/lib/log";
@@ -25,6 +26,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     return Response.json({
       ...detail,
       shop_country: shopCountry,
+      members: (await listStoreMembers(storeId)).flatMap((m) => (m.email ? [m.email] : [])),
       myRole,
     });
   } catch (e) {
