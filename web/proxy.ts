@@ -2,8 +2,9 @@ import { NextResponse, type NextRequest } from "next/server";
 import { ACCESS_COOKIE, REFRESH_COOKIE, refreshTokens, sessionCookieOptions, validateAccessToken } from "@/lib/auth";
 import { isDbConfigured } from "@/lib/surreal";
 
-// /mcp se autentica por sí mismo con la clave personal del agente (Bearer), no con cookies.
-const PUBLIC_PREFIXES = ["/login", "/api/auth", "/mcp"];
+// /mcp se autentica por sí mismo con el token del agente (Bearer); /oauth/* y /.well-known/* son el flujo OAuth
+// del agente: register/token/metadatos son públicos y /oauth/authorize gestiona su propio login (conserva la query).
+const PUBLIC_PREFIXES = ["/login", "/api/auth", "/mcp", "/oauth", "/.well-known"];
 
 /** Valida el access token; si venció, canjea el refresh y devuelve el par nuevo
  *  para que el proxy lo escriba en la request (lo ven los handlers) y la response. */

@@ -16,7 +16,7 @@ const info = async (table: string): Promise<Info> => {
 // Vistas de tabla (`AS SELECT … GROUP BY store`, solo lectura, derivadas de una tabla que sí tiene `store` READONLY):
 // no se escriben, así que no hay `store` que proteger; su PERMISSIONS ya limita el select a miembros de la tienda.
 const TABLE_VIEWS = ["ai_llm_usage_total"];
-const NON_TENANT = new Set(["user", "sys_store", "member_of", "agent_token", "insight_read", "io_counter", "ai_vertical_profile", "ai_domain_cache", "_migration", ...TABLE_VIEWS]);
+const NON_TENANT = new Set(["user", "sys_store", "member_of", "agent_token", "oauth_client", "oauth_code", "agent_lock", "insight_read", "io_counter", "ai_vertical_profile", "ai_domain_cache", "_migration", ...TABLE_VIEWS]);
 
 before(async () => {
   t = await createTestDb();

@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { getSessionUser } from "@/lib/auth";
+import { safeNext } from "@/lib/safe-next";
 import { isDbConfigured } from "@/lib/surreal";
 import { LoginForm } from "./login-form";
 
@@ -18,7 +19,7 @@ export default async function LoginPage({
   const sp = await searchParams;
   const next = sp.next ?? "";
   if (isDbConfigured()) {
-    if (await getSessionUser()) redirect(next.startsWith("/") && !next.startsWith("//") ? next : "/");
+    if (await getSessionUser()) redirect(safeNext(next) ?? "/");
   }
   return (
     <div className="relative flex min-h-dvh w-full items-center justify-center overflow-hidden bg-gradient-to-br from-primary/[0.06] via-background to-background p-6">

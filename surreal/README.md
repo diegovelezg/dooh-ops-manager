@@ -34,18 +34,34 @@ USER_PASSWORD=<pass> npm run db:user -- --email=a@b.c --store=<id> --role=owner
   de factura, fecha de cobro, deadline de material, campaña). Cambiar la zona se bloquea (EVENT) si la tienda ya tiene
   órdenes o reservas. Los clientes leen la zona con `useTz()` (`components/tenant-time.tsx`).
 
-## Agentes de IA (MCP de solo lectura)
-Cada usuario genera en **Ajustes → Conectar un agente de IA** una clave personal (`dooh_agent_…`, 90 días, revocable) y la
-pega en su cliente MCP (Claude Code, Claude Desktop, Cursor…). Endpoint: `POST <app>/mcp` con `Authorization: Bearer <clave>`.
-- `app/mcp/route.ts` canjea la clave por el JWT de 10 min del propio usuario (acceso `agent`, migración 0018) y reenvía al
-  `/mcp` embebido de SurrealDB (≥ 3.1): el agente ve exactamente lo que el usuario ve en la web (PERMISSIONS por tienda y por
-  campo, p. ej. la comisión solo owner/admin, migración 0017). Nunca usa `app_server`.
-- Solo lectura: el proxy publica únicamente `query`, `select`, `list`, `info` (`lib/mcp-proxy.ts`); la BD ya niega las escrituras al token
-  de usuario. Revocar una clave corta al agente en la siguiente petición.
+## Agentes de IA (MCP de solo lectura, OAuth)
+El usuario añade la URL `<app>/mcp` como servidor MCP remoto en su agente (ChatGPT, Claude, Antigravity, Cursor…); el agente
+abre el navegador, el usuario inicia sesión y pulsa **Permitir** (OAuth 2.1 con PKCE S256 y registro dinámico de clientes, sin
+refresh tokens). **Ajustes → Conectar un agente de IA** lista los agentes con acceso y permite revocarlos al instante.
+- Flujo: `/mcp` responde 401 con `resource_metadata` → `/.well-known/oauth-protected-resource[/mcp]` y
+  `/.well-known/oauth-authorization-server` → `/oauth/register` (DCR) → `/oauth/authorize` (login + consentimiento) →
+  `/oauth/token` (código de un solo uso + PKCE → token que no caduca). Código en `lib/oauth.ts` y `app/oauth/*`
+  (migraciones 0020/0021; el token es un `agent_token`, migraciones 0018/0019). El canje es una transacción serializada por usuario
+  (`agent_lock`): reclama el código, aplica el límite de 10 accesos, reemplaza el token anterior del cliente y emite el nuevo.
+- `app/mcp/route.ts` canjea el token por el JWT de 10 min del propio usuario (acceso `agent`) y reenvía al `/mcp` embebido de
+  SurrealDB (≥ 3.1): el agente ve exactamente lo que el usuario ve en la web (PERMISSIONS por tienda y por campo, p. ej. la
+  comisión solo owner/admin, migración 0017). Nunca usa `app_server`.
+- Solo lectura: el proxy publica únicamente `query` y `select` y reenvía una lista cerrada de métodos (`lib/mcp-proxy.ts`):
+  sin `resources/*`, `prompts/*`, `notifications/cancelled`, `GET` (SSE) ni `DELETE` (405), y sin argumentos `namespace`/`database`. El transporte de Surreal
+  resuelve GET, DELETE y las cancelaciones por id de sesión sin comprobar la identidad, por eso no se exponen.
+  Por el mismo motivo el proxy **vincula cada sesión a la credencial que la abrió** (`lib/mcp-sessions.ts`, en memoria y por
+  instancia, 1 h de inactividad) y corta con 404 cualquier POST con una sesión ajena o desconocida antes de reenviarlo; el cliente
+  reinicia sesión. Con varias réplicas de la web, una sesión abierta en otra devuelve 404 y el cliente reinicia (falla cerrado). `info`/`list` dan IAM error a un usuario
+  normal, así que el proxy sustituye las `instructions` del servidor por la guía de datos de `lib/agent-schema.ts` (un test la
+  compara con el esquema real). Se valida `Origin` (solo el propio origen).
+- `PUBLIC_APP_URL` (origen https, sin ruta ni `/` final; se valida) es **obligatorio en producción** (sin ella `/mcp` y `/oauth/*` fallan): es el
+  `issuer`/`resource` de los metadatos y no se infiere de cabeceras que controla el cliente. El límite de registro (DCR) toma la IP
+  de la entrada MÁS A LA DERECHA de `X-Forwarded-For` (la añade el proxy de confianza; asume un solo proxy, ajústalo si hay más). ChatGPT y los
+  conectores web de Claude exigen una URL pública HTTPS en el puerto 443; Claude Code y Antigravity funcionan también en local.
 - Surreal solo acepta `/mcp` con `Host` de loopback: si la web lo alcanza por otro nombre (VPS/Coolify), define
   `SURREAL_MCP_ALLOWED_HOSTS=<host:puerto que usa SURREAL_URL>` en el servicio de SurrealDB. El puerto de SurrealDB no debe estar
-  expuesto a internet: los agentes entran por `<app>/mcp` y la clave nunca llega a Surreal.
-- Pendiente: límite de tasa por clave y OAuth (necesario si se quieren conectores web de claude.ai/ChatGPT, que no aceptan una clave pegada).
+  expuesto a internet: los agentes entran por `<app>/mcp`.
+- Pendiente: límite de tasa por token en `/mcp`, y probar el flujo con ChatGPT y claude.ai en un entorno público.
 
 ## Despliegue en VPS (Coolify)
 1. Servicio con `infra/surrealdb/compose.vps.yaml`; define `SURREAL_ROOT_PASS` en sus variables. El puerto

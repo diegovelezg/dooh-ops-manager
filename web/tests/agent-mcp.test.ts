@@ -59,10 +59,19 @@ describe("claves de agente (store)", () => {
     assert.equal(list[0].id, id);
     assert.equal(list[0].label, "Claude Desktop");
     assert.equal(list[0].hint, key.slice(-4));
+    assert.equal(list[0].expires_at, null, "las claves no caducan");
+    assert.equal(list[0].last_used_at, null, "sin uso: null, no la cadena 'NONE'");
     assert.equal(JSON.stringify(list).includes(key), false, "la clave completa no se guarda ni se lista");
     assert.deepEqual(await agent.listAgentTokens("ub"), [], "cada usuario ve solo las suyas");
     await assert.rejects(() => agent.createAgentToken("ua", "  "), /Nombre inválido/);
     await agent.revokeAgentToken("ua", id);
+  });
+  it("el límite de 10 accesos activos se cumple de verdad", async () => {
+    const made: string[] = [];
+    for (let i = 0; i < 10; i++) made.push((await agent.createAgentToken("ub", `l${i}`)).id);
+    await assert.rejects(() => agent.createAgentToken("ub", "once"), /Máximo 10/);
+    assert.equal((await agent.listAgentTokens("ub")).length, 10);
+    for (const id of made) await agent.revokeAgentToken("ub", id);
   });
   it("no se puede revocar la clave de otro usuario", async () => {
     const { id } = await agent.createAgentToken("ub", "de B");
@@ -90,7 +99,7 @@ describe("/mcp: proxy de solo lectura con la identidad del usuario", () => {
     const sid = await open(key);
 
     const list = await call(key, { jsonrpc: "2.0", id: 3, method: "tools/list" }, sid);
-    assert.deepEqual((list.json.result.tools as Array<{ name: string }>).map((x) => x.name).sort(), ["info", "list", "query", "select"]);
+    assert.deepEqual((list.json.result.tools as Array<{ name: string }>).map((x) => x.name).sort(), ["query", "select"]);
 
     const rows = (await tool(key, sid, "query", { query: "SELECT name, agency_commission_pct FROM crm_company" })) as Array<Record<string, unknown>>;
     // El MCP serializa NONE como null: la comisión no llega (15) aunque la fila sí.
@@ -117,6 +126,86 @@ describe("/mcp: proxy de solo lectura con la identidad del usuario", () => {
     assert.deepEqual(await tool(key, sid, "query", { query: "SELECT name FROM crm_company" }), [{ name: "Cliente A" }]);
   });
 
+  it("GET y DELETE → 405: otro usuario no puede cerrar ni escuchar la sesión ajena", async () => {
+    const a = (await agent.createAgentToken("ua", "sesión A")).key;
+    const b = (await agent.createAgentToken("ub", "intruso B")).key;
+    const sid = await open(a);
+    const del = await route.DELETE(new Request("http://app/mcp", { method: "DELETE", headers: { authorization: `Bearer ${b}`, "mcp-session-id": sid ?? "" } }));
+    assert.equal(del.status, 405);
+    assert.equal(del.headers.get("allow"), "POST");
+    const get = await route.GET(new Request("http://app/mcp", { method: "GET", headers: { authorization: `Bearer ${b}`, accept: "text/event-stream", "mcp-session-id": sid ?? "" } }));
+    assert.equal(get.status, 405);
+    assert.deepEqual(await tool(a, sid, "query", { query: "SELECT name FROM crm_company" }), [{ name: "Cliente A" }], "la sesión de A sigue viva");
+  });
+  it("una sesión solo la usa la credencial que la abrió: el POST de otra se corta en el proxy (404), sin llegar a Surreal", async () => {
+    const a = (await agent.createAgentToken("ua", "dueño")).key;
+    const b = (await agent.createAgentToken("ub", "intruso")).key;
+    const sid = await open(a);
+    // mismo id JSON-RPC que usa A: el transporte registraría el canal de respuesta por ese id si la petición llegara
+    for (const body of [
+      { jsonrpc: "2.0", id: 9, method: "tools/call", params: { name: "query", arguments: { query: "SELECT 1" } } },
+      { jsonrpc: "2.0", id: 9, method: "tools/list" },
+      { jsonrpc: "2.0", method: "notifications/initialized" },
+    ]) {
+      const r = await call(b, body, sid);
+      assert.equal(r.status, 404, JSON.stringify(body));
+    }
+    assert.equal((await call(b, { jsonrpc: "2.0", id: 9, method: "tools/list" }, "sesion-inventada")).status, 404);
+    assert.deepEqual(await tool(a, sid, "query", { query: "SELECT name FROM crm_company" }), [{ name: "Cliente A" }], "la sesión de A sigue viva");
+    // el intruso abre la suya y funciona; initialize con un id ajeno en la cabecera no la hereda
+    const sidB = await open(b);
+    assert.notEqual(sidB, sid);
+    const ini = await call(b, { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "t", version: "0" } } }, sid);
+    assert.equal(ini.status, 200);
+    assert.notEqual(ini.sid, sid, "no reutiliza la sesión ajena");
+  });
+  it("con otro JWT del mismo token la sesión sigue siendo suya", async () => {
+    const a = (await agent.createAgentToken("ua", "mismo token")).key;
+    const sid = await open(a);
+    agent.resetAgentJwtCache();
+    await new Promise((r) => setTimeout(r, 1100));
+    assert.deepEqual(await tool(a, sid, "query", { query: "SELECT name FROM crm_company" }), [{ name: "Cliente A" }]);
+  });
+  it("producción: sin PUBLIC_APP_URL válida /mcp falla SIEMPRE (también sin Origin y con token válido)", async () => {
+    const { key } = await agent.createAgentToken("ua", "config");
+    const hit = () => route.POST(new Request("http://app.example.com/mcp", { method: "POST", headers: { authorization: `Bearer ${key}`, "content-type": "application/json", accept: "application/json, text/event-stream" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "t", version: "0" } } }) }));
+    const prev = { env: process.env.NODE_ENV, url: process.env.PUBLIC_APP_URL };
+    try {
+      (process.env as Record<string, string>).NODE_ENV = "production";
+      delete process.env.PUBLIC_APP_URL;
+      assert.equal((await hit()).status, 500, "ausente");
+      process.env.PUBLIC_APP_URL = "http://app.example.com";
+      assert.equal((await hit()).status, 500, "http en producción");
+      process.env.PUBLIC_APP_URL = "https://app.example.com/mcp";
+      assert.equal((await hit()).status, 500, "con ruta");
+      process.env.PUBLIC_APP_URL = "https://app.example.com";
+      assert.equal((await hit()).status, 200, "válida");
+    } finally {
+      (process.env as Record<string, string>).NODE_ENV = prev.env ?? "test";
+      if (prev.url === undefined) delete process.env.PUBLIC_APP_URL;
+      else process.env.PUBLIC_APP_URL = prev.url;
+    }
+  });
+  it("Origin ajeno → 403 (Streamable HTTP); sin Origin (clientes de servidor) pasa", async () => {
+    const { key } = await agent.createAgentToken("ua", "origen");
+    const hit = (origin?: string) =>
+      route.POST(new Request("http://app.example.com/mcp", { method: "POST", headers: { host: "app.example.com", "x-forwarded-proto": "http", authorization: `Bearer ${key}`, "content-type": "application/json", accept: "application/json, text/event-stream", ...(origin ? { origin } : {}) }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "t", version: "0" } } }) }));
+    assert.equal((await hit("https://evil.example")).status, 403);
+    assert.equal((await hit()).status, 200);
+    assert.equal((await hit("http://app.example.com")).status, 200, "mismo origen");
+  });
+  it("initialize solo anuncia tools; resources, prompts y cambios de base se rechazan", async () => {
+    const { key } = await agent.createAgentToken("ua", "métodos");
+    const ini = await call(key, { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "t", version: "0" } } });
+    assert.deepEqual(ini.json.result.capabilities, { tools: {} });
+    const sid = ini.sid ?? undefined;
+    await call(key, { jsonrpc: "2.0", method: "notifications/initialized" }, sid);
+    for (const method of ["resources/read", "prompts/list", "resources/list"]) {
+      const r = await call(key, { jsonrpc: "2.0", id: 5, method, params: { uri: "surrealdb://instructions" } }, sid);
+      assert.equal(r.json.error.code, -32601, method);
+    }
+    assert.match(String(await tool(key, sid, "query", { query: "SELECT 1", database: "otra" })), /namespace o base de datos/);
+  });
   it("revocar corta al agente al instante, aun con JWT en caché", async () => {
     const { id, key } = await agent.createAgentToken("ua", "se revoca");
     const sid = await open(key);
@@ -125,8 +214,13 @@ describe("/mcp: proxy de solo lectura con la identidad del usuario", () => {
     assert.equal((await call(key, { jsonrpc: "2.0", id: 5, method: "tools/list" }, sid)).status, 401);
   });
 
-  it("una clave vencida no sirve", async () => {
-    // expires_at es READONLY: se simula con una clave creada ya vencida desde root.
+  it("una clave sin vencimiento sirve (no caduca)", async () => {
+    const { key } = await agent.createAgentToken("ua", "eterna");
+    assert.equal((await call(key, { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "t", version: "0" } } })).status, 200);
+  });
+
+  it("una clave con vencimiento antiguo ya pasado no sirve", async () => {
+    // Claves anteriores a la 0019 pueden tener expires_at: se respeta.
     const { createHash } = await import("node:crypto");
     const old = "dooh_agent_" + "y".repeat(43);
     await q(`CREATE agent_token SET user = user:ua, label = 'vieja', key_hash = '${createHash("sha256").update(old).digest("hex")}', hint = 'yyyy', expires_at = time::now() - 1m`);

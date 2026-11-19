@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { signInWithPassword, signOut } from "@/lib/auth";
 import { surqlAs } from "@/lib/surreal";
 import { createLogger } from "@/lib/log";
+import { safeNext } from "@/lib/safe-next";
 
 const log = createLogger("auth");
 
@@ -42,16 +43,6 @@ export async function signInAction(_prev: AuthState | null, formData: FormData):
 export async function signOutAction(): Promise<void> {
   await signOut();
   redirect("/login");
-}
-
-/** `next` seguro contra open-redirect: path absoluto same-origin sin
- *  backslash ni slash codificado (`/%2f`, `/\evil`, `//evil`). */
-function safeNext(next: string): string | null {
-  if (!next.startsWith("/") || next.startsWith("//")) return null;
-  if (next.includes("\\")) return null;
-  if (/%2f/i.test(next)) return null;
-  if (!/^\/[^/\\]/.test(next) && next !== "/") return null;
-  return next;
 }
 
 /** `next` solo si apunta a una tienda del usuario (o no pide tienda). */

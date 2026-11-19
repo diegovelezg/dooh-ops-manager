@@ -57,7 +57,15 @@ export default async function SettingsPage({
   } catch {
     myUserId = null;
   }
-  const agentTokens = myUserId ? await listAgentTokens(myUserId).catch(() => []) : [];
+  let agentTokens: Awaited<ReturnType<typeof listAgentTokens>> = [];
+  let agentTokensFailed = false;
+  if (myUserId) {
+    try {
+      agentTokens = await listAgentTokens(myUserId);
+    } catch {
+      agentTokensFailed = true; // no se oculta como "sin agentes": el panel avisa
+    }
+  }
   return (
     <div className="page-shell max-w-[1200px]">
       <PageHeader
@@ -89,7 +97,7 @@ export default async function SettingsPage({
               canEdit={myRole === "owner" || myRole === "admin"}
             />
           )}
-          {myUserId && <AgentPanel tokens={agentTokens} />}
+          {myUserId && <AgentPanel tokens={agentTokens} loadFailed={agentTokensFailed} />}
         </div>
       )}
     </div>

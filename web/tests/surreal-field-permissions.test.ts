@@ -73,8 +73,21 @@ describe("campos de comisión: PERMISSIONS por rol (paridad con roles.ts)", () =
     });
   }
 
-  it("no se filtra por SELECT * ni por proyección anidada", async () => {
+  it("no se filtra por proyecciones anidadas, FETCH, subconsultas, ORDER BY ni filtros", async () => {
     const tok = tokens.get("viewer")!;
+    const one = async (sql: string) => (await asUser<Array<Record<string, unknown>>>(tok, sql))[0] ?? {};
+    assert.equal((await one(`SELECT snapshot.commission_pct AS c FROM io_order_version`)).c ?? null, null, "campo anidado del snapshot");
+    assert.equal((await one(`SELECT snapshot AS s FROM io_order_version`)).s ?? null, null, "el snapshot completo");
+    assert.equal((await one(`SELECT commission_pct AS c FROM io_order`)).c ?? null, null);
+    const sub = (await one(`SELECT (SELECT agency_commission_pct FROM crm_company) AS x FROM io_order:o1`)).x as Array<Record<string, unknown>>;
+    assert.ok(sub.every((r) => (r.agency_commission_pct ?? null) === null), "subconsulta");
+    const rows = await asUser<Array<Record<string, unknown>>>(tok, `SELECT * FROM io_order FETCH advertiser, agency`);
+    assert.equal(rows.some((r) => "commission_pct" in r), false, "FETCH");
+    // filtrar u ordenar por un campo oculto no permite deducir su valor: la condición ve NONE
+    const by = await asUser<unknown[]>(tok, `SELECT id FROM crm_company WHERE agency_commission_pct = 15`);
+    assert.deepEqual(by, [], "WHERE sobre un campo oculto no acierta");
+    const byAdmin = await asUser<unknown[]>(tokens.get("admin")!, `SELECT id FROM crm_company WHERE agency_commission_pct = 15`);
+    assert.equal(byAdmin.length, 1, "el admin sí filtra por él");
     const [c] = await asUser<Array<Record<string, unknown>>>(tok, `SELECT * FROM crm_company:ag`);
     assert.equal("agency_commission_pct" in c, false);
     const [o] = await asUser<Array<Record<string, unknown>>>(tok, `SELECT * FROM io_order:o1`);
