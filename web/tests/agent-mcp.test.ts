@@ -166,20 +166,21 @@ describe("/mcp: proxy de solo lectura con la identidad del usuario", () => {
     await new Promise((r) => setTimeout(r, 1100));
     assert.deepEqual(await tool(a, sid, "query", { query: "SELECT name FROM crm_company" }), [{ name: "Cliente A" }]);
   });
-  it("producción: sin PUBLIC_APP_URL válida /mcp falla SIEMPRE (también sin Origin y con token válido)", async () => {
+  it("producción: autodetecta https del proxy; falla si el proxy declara http o si PUBLIC_APP_URL es inválida (también sin Origin)", async () => {
     const { key } = await agent.createAgentToken("ua", "config");
-    const hit = () => route.POST(new Request("http://app.example.com/mcp", { method: "POST", headers: { authorization: `Bearer ${key}`, "content-type": "application/json", accept: "application/json, text/event-stream" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "t", version: "0" } } }) }));
+    const hit = (extra: Record<string, string> = {}) =>
+      route.POST(new Request("http://app.example.com/mcp", { method: "POST", headers: { host: "app.example.com", authorization: `Bearer ${key}`, "content-type": "application/json", accept: "application/json, text/event-stream", ...extra }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "t", version: "0" } } }) }));
     const prev = { env: process.env.NODE_ENV, url: process.env.PUBLIC_APP_URL };
     try {
       (process.env as Record<string, string>).NODE_ENV = "production";
       delete process.env.PUBLIC_APP_URL;
-      assert.equal((await hit()).status, 500, "ausente");
-      process.env.PUBLIC_APP_URL = "http://app.example.com";
-      assert.equal((await hit()).status, 500, "http en producción");
+      assert.equal((await hit({ "x-forwarded-proto": "https" })).status, 200, "autodetección con https");
+      assert.equal((await hit({ "x-forwarded-proto": "http" })).status, 500, "el proxy declara http");
+      assert.equal((await hit()).status, 500, "sin proxy: http");
       process.env.PUBLIC_APP_URL = "https://app.example.com/mcp";
-      assert.equal((await hit()).status, 500, "con ruta");
+      assert.equal((await hit({ "x-forwarded-proto": "https" })).status, 500, "valor explícito inválido: no se ignora");
       process.env.PUBLIC_APP_URL = "https://app.example.com";
-      assert.equal((await hit()).status, 200, "válida");
+      assert.equal((await hit()).status, 200, "valor explícito válido");
     } finally {
       (process.env as Record<string, string>).NODE_ENV = prev.env ?? "test";
       if (prev.url === undefined) delete process.env.PUBLIC_APP_URL;

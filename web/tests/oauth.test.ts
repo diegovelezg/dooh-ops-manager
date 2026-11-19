@@ -121,22 +121,38 @@ describe("origen público", () => {
       else process.env.PUBLIC_APP_URL = prev.url;
     }
   });
-  it("en producción exige PUBLIC_APP_URL; fuera, infiere de las cabeceras", () => {
-    const h = new Headers({ host: "evil.example", "x-forwarded-proto": "https" });
+  it("sin PUBLIC_APP_URL se autodetecta de las cabeceras del proxy; en producción solo https y host válido", () => {
     const prev = { env: process.env.NODE_ENV, url: process.env.PUBLIC_APP_URL };
+    const h = (o: Record<string, string>) => new Headers(o);
     try {
       delete process.env.PUBLIC_APP_URL;
       (process.env as Record<string, string>).NODE_ENV = "production";
-      assert.throws(() => oauth.publicOrigin(h, "http://localhost/x"), /PUBLIC_APP_URL/);
-      process.env.PUBLIC_APP_URL = "https://app.example.com/";
-      assert.equal(oauth.publicOrigin(h), "https://app.example.com", "manda la variable, no el Host del cliente");
-      (process.env as Record<string, string>).NODE_ENV = "test";
-      delete process.env.PUBLIC_APP_URL;
-      assert.equal(oauth.publicOrigin(h), "https://evil.example");
+      assert.equal(oauth.publicOrigin(h({ host: "interno:3000", "x-forwarded-host": "App.Example.com", "x-forwarded-proto": "https" })), "https://app.example.com");
+      assert.equal(oauth.publicOrigin(h({ host: "app.example.com:8443", "x-forwarded-proto": "https" })), "https://app.example.com:8443");
+      assert.equal(oauth.publicOrigin(h({ "x-forwarded-host": "app.example.com", "x-forwarded-proto": "https,http" })), "https://app.example.com", "toma el primero de la lista");
+      assert.throws(() => oauth.publicOrigin(h({ host: "app.example.com", "x-forwarded-proto": "http" })), /https/, "proxy declara http");
+      assert.throws(() => oauth.publicOrigin(h({ host: "app.example.com" }), "http://app.example.com/x"), /https/, "sin proxy y sin https");
+      for (const bad of ["evil.com/path", "evil.com?x=1", "a b.com", "evil.com@x.com", "https://evil.com", "-evil.com", "evil.com:99999999"]) {
+        assert.throws(() => oauth.publicOrigin(h({ "x-forwarded-host": bad, "x-forwarded-proto": "https" })), /Host inválido/, bad);
+      }
+      assert.throws(() => oauth.publicOrigin(h({})), /No se pudo detectar/);
+      (process.env as Record<string, string>).NODE_ENV = "development";
+      assert.equal(oauth.publicOrigin(h({ host: "localhost:3000" }), "http://localhost:3000/x"), "http://localhost:3000", "desarrollo: http permitido");
+      assert.equal(oauth.publicOrigin(h({ host: "evil.example", "x-forwarded-proto": "https" })), "https://evil.example");
     } finally {
       (process.env as Record<string, string>).NODE_ENV = prev.env ?? "test";
       if (prev.url === undefined) delete process.env.PUBLIC_APP_URL;
       else process.env.PUBLIC_APP_URL = prev.url;
+    }
+  });
+  it("PUBLIC_APP_URL, si existe, manda sobre las cabeceras", () => {
+    const prev = process.env.PUBLIC_APP_URL;
+    try {
+      process.env.PUBLIC_APP_URL = "https://fijo.example.com";
+      assert.equal(oauth.publicOrigin(new Headers({ host: "otro.example", "x-forwarded-proto": "https" })), "https://fijo.example.com");
+    } finally {
+      if (prev === undefined) delete process.env.PUBLIC_APP_URL;
+      else process.env.PUBLIC_APP_URL = prev;
     }
   });
 });

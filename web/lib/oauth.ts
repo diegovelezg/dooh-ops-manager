@@ -37,18 +37,31 @@ export function canonicalOrigin(v: string): string {
   return u.origin;
 }
 
-/** Origen público de la app (metadatos, `resource`, `issuer`). En producción EXIGE `PUBLIC_APP_URL` (https): las
- *  cabeceras reenviadas las controla quien llega al proxy, no la app. Fuera de producción se infiere de las cabeceras. */
+const HOST_RE = /^[a-z0-9]([a-z0-9.-]*[a-z0-9])?(:\d{1,5})?$|^\[[0-9a-f:]+\](:\d{1,5})?$/i;
+
+/** Origen público de la app (metadatos, `resource`, `issuer`). Si hay `PUBLIC_APP_URL` (opcional) manda y se valida; si
+ *  no, se AUTODETECTA de `X-Forwarded-Proto` / `X-Forwarded-Host` (los pone el proxy inverso, p. ej. Coolify/Traefik) o de
+ *  `Host`. En producción exige que el resultado sea https y que el host esté bien formado: sin proxy que declare https
+ *  falla en vez de publicar metadatos http. Sin caché (las respuestas son `no-store`), así que un Host manipulado solo
+ *  afecta a quien lo envía. */
 export function publicOrigin(headers: Headers, fallbackUrl?: string): string {
   const configured = process.env.PUBLIC_APP_URL?.trim();
   if (configured) return canonicalOrigin(configured);
-  if (process.env.NODE_ENV === "production") {
-    throw new Error("PUBLIC_APP_URL es obligatorio en producción (origen https canónico de la app).");
+  const prod = process.env.NODE_ENV === "production";
+  const fallback = fallbackUrl ? new URL(fallbackUrl) : null;
+  const proto = (headers.get("x-forwarded-proto")?.split(",")[0].trim() || fallback?.protocol.replace(":", "") || "http").toLowerCase();
+  const host = (headers.get("x-forwarded-host")?.split(",")[0].trim() || headers.get("host") || fallback?.host || "").toLowerCase();
+  if (!host) {
+    if (prod) throw new Error("No se pudo detectar el origen público: la petición no trae Host ni X-Forwarded-Host.");
+    return "http://localhost:3000";
   }
-  const proto = headers.get("x-forwarded-proto")?.split(",")[0].trim();
-  const host = headers.get("x-forwarded-host")?.split(",")[0].trim() ?? headers.get("host");
-  if (host) return `${proto || (fallbackUrl ? new URL(fallbackUrl).protocol.replace(":", "") : "http")}://${host}`;
-  return fallbackUrl ? new URL(fallbackUrl).origin : "http://localhost:3000";
+  if (prod) {
+    if (!HOST_RE.test(host)) throw new Error(`Host inválido en la petición: "${host.slice(0, 80)}".`);
+    if (proto !== "https") {
+      throw new Error("Origen público no https: el proxy inverso debe enviar X-Forwarded-Proto: https (o define PUBLIC_APP_URL).");
+    }
+  }
+  return `${proto}://${host}`;
 }
 
 /** Metadatos RFC 9728 (recurso protegido) y RFC 8414 (servidor de autorización). */

@@ -54,10 +54,11 @@ refresh tokens). **Ajustes → Conectar un agente de IA** lista los agentes con 
   reinicia sesión. Con varias réplicas de la web, una sesión abierta en otra devuelve 404 y el cliente reinicia (falla cerrado). `info`/`list` dan IAM error a un usuario
   normal, así que el proxy sustituye las `instructions` del servidor por la guía de datos de `lib/agent-schema.ts` (un test la
   compara con el esquema real). Se valida `Origin` (solo el propio origen).
-- `PUBLIC_APP_URL` (origen https, sin ruta ni `/` final; se valida) es **obligatorio en producción** (sin ella `/mcp` y `/oauth/*` fallan): es el
-  `issuer`/`resource` de los metadatos y no se infiere de cabeceras que controla el cliente. El límite de registro (DCR) toma la IP
-  de la entrada MÁS A LA DERECHA de `X-Forwarded-For` (la añade el proxy de confianza; asume un solo proxy, ajústalo si hay más). ChatGPT y los
-  conectores web de Claude exigen una URL pública HTTPS en el puerto 443; Claude Code y Antigravity funcionan también en local.
+- El origen público (`issuer`/`resource` de los metadatos) se **autodetecta** de `X-Forwarded-Proto`/`X-Forwarded-Host` (los pone el
+  proxy inverso, p. ej. Coolify/Traefik). En producción exige https y un host bien formado; si el proxy declara http falla con un
+  mensaje claro. `PUBLIC_APP_URL` (origen https, sin ruta ni `/` final; se valida) es **opcional**: si existe, manda sobre las
+  cabeceras. El límite de registro (DCR) toma la IP de la entrada MÁS A LA DERECHA de `X-Forwarded-For` (asume un solo proxy).
+  ChatGPT y los conectores web de Claude exigen una URL pública HTTPS en el puerto 443; Claude Code y Antigravity funcionan en local.
 - Surreal solo acepta `/mcp` con `Host` de loopback: si la web lo alcanza por otro nombre (VPS/Coolify), define
   `SURREAL_MCP_ALLOWED_HOSTS=<host:puerto que usa SURREAL_URL>` en el servicio de SurrealDB. El puerto de SurrealDB no debe estar
   expuesto a internet: los agentes entran por `<app>/mcp`.
