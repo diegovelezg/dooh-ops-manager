@@ -34,6 +34,19 @@ USER_PASSWORD=<pass> npm run db:user -- --email=a@b.c --store=<id> --role=owner
   de factura, fecha de cobro, deadline de material, campaña). Cambiar la zona se bloquea (EVENT) si la tienda ya tiene
   órdenes o reservas. Los clientes leen la zona con `useTz()` (`components/tenant-time.tsx`).
 
+## Agentes de IA (MCP de solo lectura)
+Cada usuario genera en **Ajustes → Conectar un agente de IA** una clave personal (`dooh_agent_…`, 90 días, revocable) y la
+pega en su cliente MCP (Claude Code, Claude Desktop, Cursor…). Endpoint: `POST <app>/mcp` con `Authorization: Bearer <clave>`.
+- `app/mcp/route.ts` canjea la clave por el JWT de 10 min del propio usuario (acceso `agent`, migración 0018) y reenvía al
+  `/mcp` embebido de SurrealDB (≥ 3.1): el agente ve exactamente lo que el usuario ve en la web (PERMISSIONS por tienda y por
+  campo, p. ej. la comisión solo owner/admin, migración 0017). Nunca usa `app_server`.
+- Solo lectura: el proxy publica únicamente `query`, `select`, `list`, `info` (`lib/mcp-proxy.ts`); la BD ya niega las escrituras al token
+  de usuario. Revocar una clave corta al agente en la siguiente petición.
+- Surreal solo acepta `/mcp` con `Host` de loopback: si la web lo alcanza por otro nombre (VPS/Coolify), define
+  `SURREAL_MCP_ALLOWED_HOSTS=<host:puerto que usa SURREAL_URL>` en el servicio de SurrealDB. El puerto de SurrealDB no debe estar
+  expuesto a internet: los agentes entran por `<app>/mcp` y la clave nunca llega a Surreal.
+- Pendiente: límite de tasa por clave y OAuth (necesario si se quieren conectores web de claude.ai/ChatGPT, que no aceptan una clave pegada).
+
 ## Despliegue en VPS (Coolify)
 1. Servicio con `infra/surrealdb/compose.vps.yaml`; define `SURREAL_ROOT_PASS` en sus variables. El puerto
    publicado (18101) queda abierto en el host: restríngelo con firewall.

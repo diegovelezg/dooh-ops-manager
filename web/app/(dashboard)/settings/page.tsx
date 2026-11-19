@@ -6,6 +6,8 @@ import { getSessionUser } from "@/lib/auth";
 import { TeamPanel } from "./team-panel";
 import { InventoryPanel } from "./inventory-panel";
 import { TimeZonePanel } from "./timezone-panel";
+import { AgentPanel } from "./agent-panel";
+import { listAgentTokens } from "@/lib/agent-tokens";
 
 export const instant = false;
 
@@ -55,12 +57,13 @@ export default async function SettingsPage({
   } catch {
     myUserId = null;
   }
+  const agentTokens = myUserId ? await listAgentTokens(myUserId).catch(() => []) : [];
   return (
     <div className="page-shell max-w-[1200px]">
       <PageHeader
         eyebrow="Configuración"
         title="Ajustes"
-        description="Equipo e inventario de esta tienda."
+        description="Equipo, inventario de esta tienda y conexión de agentes de IA."
       />
       {accessDenied ? (
         <p className="text-sm text-muted-foreground">
@@ -86,6 +89,7 @@ export default async function SettingsPage({
               canEdit={myRole === "owner" || myRole === "admin"}
             />
           )}
+          {myUserId && <AgentPanel tokens={agentTokens} />}
         </div>
       )}
     </div>
