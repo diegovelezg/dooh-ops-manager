@@ -1,10 +1,27 @@
 import { NextResponse, type NextRequest } from "next/server";
+import type { Tokens } from "surrealdb";
 import { ACCESS_COOKIE, REFRESH_COOKIE, refreshTokens, sessionCookieOptions, validateAccessToken } from "@/lib/auth";
 import { isDbConfigured } from "@/lib/surreal";
 
 // /mcp se autentica por sí mismo con el token del agente (Bearer); /oauth/* y /.well-known/* son el flujo OAuth
 // del agente: register/token/metadatos son públicos y /oauth/authorize gestiona su propio login (conserva la query).
 const PUBLIC_PREFIXES = ["/login", "/api/auth", "/mcp", "/oauth", "/.well-known"];
+
+/** El refresh de SurrealDB es de un solo uso: si varias requests en paralelo (prefetch, /api/*) llegan con el mismo
+ *  access vencido, solo la primera lo canjearía y las demás borrarían la sesión. Se comparte el resultado del
+ *  canje entre requests con el mismo refresh durante unos segundos (el navegador aún envía las cookies viejas). */
+const RENEW_SHARE_MS = 30_000;
+const renewals = new Map<string, Promise<Tokens | null>>();
+function renewOnce(tokens: Tokens & { refresh: string }): Promise<Tokens | null> {
+  let p = renewals.get(tokens.refresh);
+  if (!p) {
+    p = refreshTokens(tokens);
+    renewals.set(tokens.refresh, p);
+    p.catch(() => renewals.delete(tokens.refresh)); // error transitorio (DB caída): que se pueda reintentar
+    setTimeout(() => renewals.delete(tokens.refresh), RENEW_SHARE_MS).unref?.();
+  }
+  return p;
+}
 
 /** Valida el access token; si venció, canjea el refresh y devuelve el par nuevo
  *  para que el proxy lo escriba en la request (lo ven los handlers) y la response. */
@@ -15,7 +32,7 @@ async function resolveSession(request: NextRequest) {
   const user = await validateAccessToken(access);
   if (user) return { user, renewed: null, cleared: false };
   if (!access || !refresh) return { user: null, renewed: null, cleared: Boolean(access || refresh) };
-  const renewed = await refreshTokens({ access, refresh });
+  const renewed = await renewOnce({ access, refresh });
   if (!renewed) return { user: null, renewed: null, cleared: true };
   return { user: await validateAccessToken(renewed.access), renewed, cleared: false };
 }
